@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from google.cloud import bigquery
 import pandas as pd
+from pydantic import BaseModel
 
 app = FastAPI(title="Data Catalog - Dataset Viewer")
 
@@ -25,6 +26,155 @@ def list_datasets():
         return [{"dataset_id": d.dataset_id} for d in datasets]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao listar Datasets: {str(e)}")
+
+# Rota 1: Busca metadados estruturais e colunas elegíveis para filtro de data (Custo Zero)
+@app.get("/api/table-metadata/{dataset_id}/{table_id}")
+def get_table_metadata(dataset_id: str, table_id: str):
+    try:
+        table_ref = f"{PROJECT_ID}.{dataset_id}.{table_id}"
+        table = bq_client.get_table(table_ref)
+        
+        # Filtra apenas colunas temporais elegíveis para o dropdown de filtro D-X
+        date_columns = [
+            field.name for field in table.schema 
+            if field.type in ["DATE", "DATETIME", "TIMESTAMP"] and field.mode != "REPEATED"
+        ]
+        
+        schema_info = [
+            {"name": field.name, "type": field.type, "mode": field.mode}
+            for field in table.schema
+        ]
+        
+        return {
+            "table_id": table_id,
+            "table_type": table.table_type,  # TABLE, VIEW, EXTERNAL
+            "schema": schema_info,
+            "date_columns": date_columns,
+            "total_rows": table.num_rows
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao capturar metadados: {str(e)}")
+
+# Rota 2: Executa Simulação FinOps (Dry Run) ou o Profiling Estatístico Real
+@app.get("/api/table-profiling-run/{dataset_id}/{table_id}")
+def run_table_profiling(
+    dataset_id: str, 
+    table_id: str, 
+    dry_run: bool = True,
+    sample_percent: Optional[float] = 100.0,
+    date_column: Optional[str] = None,
+    days_lookback: Optional[int] = None
+):
+    try:
+        table_ref = f"{PROJECT_ID}.{dataset_id}.{table_id}"
+        table = bq_client.get_table(table_ref)
+        is_view = table.table_type == "VIEW"
+        
+        # Início da montagem dinâmica da query analítica baseada em FinOps
+        select_clauses = ["COUNT(*) AS _total_sampled_rows"]
+        
+        for field in table.schema:
+            # Ignora estruturas complexas ou aninhadas para prevenir falhas de agregação
+            if field.type in ["RECORD", "STRUCT"] or field.mode == "REPEATED":
+                continue
+            
+            escaped_col = f"`{field.name}`"
+            # Auxiliares para cálculo de Completude
+            select_clauses.append(f"COUNT({escaped_col}) AS {field.name}__count_filled")
+            # Unicidade Econômica FinOps (HyperLogLog)
+            select_clauses.append(f"APPROX_COUNT_DISTINCT({escaped_col}) AS {field.name}__approx_distinct")
+            
+            # Limites físicos aceitos por tipos primitivos e temporais
+            if field.type in ["INTEGER", "FLOAT", "NUMERIC", "BIGNUMERIC", "INT64", "FLOAT64", "DATE", "DATETIME", "TIMESTAMP"]:
+                select_clauses.append(f"MIN({escaped_col}) AS {field.name}__min")
+                select_clauses.append(f"MAX({escaped_col}) AS {field.name}__max")
+        
+        from_clause = f"`{table_ref}`"
+        # Injeta TABLESAMPLE apenas se for tabela física nativa
+        if not is_view and sample_percent and sample_percent < 100:
+            from_clause += f" TABLESAMPLE SYSTEM ({sample_percent} PERCENT)"
+            
+        where_clauses = []
+        if date_column and days_lookback is not None:
+            target_field = next((f for f in table.schema if f.name == date_column), None)
+            if target_field:
+                if target_field.type == "DATE":
+                    where_clauses.append(f"`{date_column}` >= DATE_SUB(CURRENT_DATE(), INTERVAL {days_lookback} DAY)")
+                elif target_field.type in ["TIMESTAMP", "DATETIME"]:
+                    where_clauses.append(f"`{date_column}` >= {target_field.type}_SUB(CURRENT_{target_field.type}(), INTERVAL {days_lookback} DAY)")
+                else:
+                    where_clauses.append(f"`{date_column}` >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days_lookback} DAY)")
+                
+        query = f"SELECT {', '.join(select_clauses)} FROM {from_clause}"
+        if where_clauses:
+            query += f" WHERE {' AND '.join(where_clauses)}"
+            
+        # Configuração do Job do BigQuery de acordo com a intenção do clique
+        job_config = bigquery.QueryJobConfig(dry_run=dry_run, use_query_cache=True)
+        query_job = bq_client.query(query, job_config=job_config)
+        
+        if dry_run:
+            bytes_scanned = query_job.total_bytes_processed
+            # Conversão: Proporção baseada em 1 TB = 10^12 Bytes no modelo On-Demand do BQ
+            cost_usd = (bytes_scanned / (10**12)) * 6.25
+            return {
+                "dry_run": True,
+                "bytes_scanned": bytes_scanned,
+                "cost_usd": cost_usd,
+                "query_generated": query
+            }
+        
+        # Execução Analítica Efetiva
+        df = query_job.to_dataframe()
+        if df.empty:
+            raise HTTPException(status_code=404, detail="Nenhum registro encontrado para amostragem.")
+            
+        row = df.iloc[0]
+        total_sampled_rows = int(row["_total_sampled_rows"])
+        
+        columns_profiling = []
+        for field in table.schema:
+            if field.type in ["RECORD", "STRUCT"] or field.mode == "REPEATED":
+                columns_profiling.append({
+                    "name": field.name, "type": field.type, "mode": field.mode, "status": "unsupported"
+                })
+                continue
+                
+            count_filled = int(row.get(f"{field.name}__count_filled", 0))
+            approx_distinct = int(row.get(f"{field.name}__approx_distinct", 0))
+            
+            completeness = (count_filled / total_sampled_rows * 100) if total_sampled_rows > 0 else 0
+            uniqueness = (approx_distinct / count_filled * 100) if count_filled > 0 else 0
+            
+            min_val = row.get(f"{field.name}__min")
+            max_val = row.get(f"{field.name}__max")
+            
+            if pd.notnull(min_val) and hasattr(min_val, 'strftime'):
+                min_val = min_val.strftime('%Y-%m-%d %H:%M:%S')
+            if pd.notnull(max_val) and hasattr(max_val, 'strftime'):
+                max_val = max_val.strftime('%Y-%m-%d %H:%M:%S')
+                
+            columns_profiling.append({
+                "name": field.name,
+                "type": field.type,
+                "mode": field.mode,
+                "status": "profiled",
+                "completeness_percent": round(completeness, 2),
+                "approx_distinct_count": approx_distinct,
+                "uniqueness_percent": round(uniqueness, 2),
+                "min": str(min_val) if pd.notnull(min_val) else None,
+                "max": str(max_val) if pd.notnull(max_val) else None
+            })
+            
+        return {
+            "dry_run": False,
+            "table_id": table_id,
+            "total_rows": table.num_rows,
+            "sampled_rows": total_sampled_rows,
+            "columns": columns_profiling
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/dataset-health/{dataset_id}")
 def get_dataset_health(dataset_id: str):
