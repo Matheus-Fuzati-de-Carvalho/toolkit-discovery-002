@@ -367,7 +367,11 @@
                     
                     try {
                         const res = await fetch(`/api/table-metadata/${activeDataset.value}/${tableId}`);
-                        if (!res.ok) throw new Error("Erro na captura estrutural do schema técnico.");
+                        if (!res.ok) {
+                            // CAPTURA A MENSAGEM REAL ENVIADA PELO FASTAPI
+                            const errData = await res.json();
+                            throw new Error(errData.detail || "Erro na captura estrutural do schema técnico.");
+                        }
                         const data = await res.json();
                         selectedTableMetadata.value = data;
                         
@@ -375,13 +379,14 @@
                             profileSamplePercent.value = 100;
                         }
                     } catch (e) {
+                        // Exibirá o erro real no Toast da tela
                         showToast("Falha na varredura inicial: " + e.message);
                         isProfileModalOpen.value = false;
                     } finally {
                         isMetadataLoading.value = false;
                     }
                 };
-
+                
                 // Orquestrador de Execução Analítica (Ação FinOps Dry Run vs Run Efetivo)
                 const runProfilingAction = async (isDryRun) => {
                     if (!selectedTableMetadata.value) return;
