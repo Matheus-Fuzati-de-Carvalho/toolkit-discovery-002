@@ -1,6 +1,5 @@
 name: Deploy Manual sob Demanda (Multiprojeto)
 
-# 🎛️ Transforma o deploy em uma ação manual com campos de entrada (inputs)
 on:
   workflow_dispatch:
     inputs:
@@ -27,12 +26,10 @@ permissions:
   id-token: write
   contents: read
 
-# 🌍 Captura o que você digitou no formulário e injeta nas variáveis
 env:
   GCP_PROJECT_ID: ${{ inputs.gcp_project_id }}
   GCP_REGION: ${{ inputs.gcp_region }}
   GCP_APP_NAME: ${{ inputs.gcp_app_name }}
-  # Conexão automática com o variables.tf do Terraform:
   TF_VAR_project_id: ${{ inputs.gcp_project_id }}
   TF_VAR_region: ${{ inputs.gcp_region }}
   TF_VAR_app_name: ${{ inputs.gcp_app_name }}
@@ -57,8 +54,15 @@ jobs:
       - name: Terraform Init 🏗️
         run: terraform init
 
-      - name: Criar apenas o Artifact Registry 📦
-        run: terraform apply -target=google_artifact_registry_repository.repo -auto-approve
+      - name: Verificar e Importar Artifact Registry se existir 📦
+        run: |
+          if gcloud artifacts repositories describe ${{ env.GCP_APP_NAME }} --location=${{ env.GCP_REGION }} --project=${{ env.GCP_PROJECT_ID }} &>/dev/null; then
+            echo "🎯 O repositório já existe! Sincronizando com o Terraform..."
+            terraform import google_artifact_registry_repository.repo projects/${{ env.GCP_PROJECT_ID }}/locations/${{ env.GCP_REGION }}/repositories/${{ env.GCP_APP_NAME }}
+          else
+            echo "🆕 Repositório não encontrado. Criando do zero..."
+            terraform apply -target=google_artifact_registry_repository.repo -auto-approve
+          fi
 
       - name: Configurar Autenticação do Docker 🔐
         run: |
@@ -69,5 +73,12 @@ jobs:
           docker build -t ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GCP_APP_NAME }}/${{ env.GCP_APP_NAME }}:latest .
           docker push ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GCP_APP_NAME }}/${{ env.GCP_APP_NAME }}:latest
 
-      - name: Terraform Apply Completo (Cloud Run) ☁️
+      - name: Verificar e Importar Cloud Run se existir ☁️
+        run: |
+          if gcloud run services describe ${{ env.GCP_APP_NAME }} --region=${{ env.GCP_REGION }} --project=${{ env.GCP_PROJECT_ID }} &>/dev/null; then
+            echo "🎯 O Cloud Run já existe! Sincronizando para permitir atualização..."
+            terraform import google_cloud_run_v2_service.app projects/${{ env.GCP_PROJECT_ID }}/locations/${{ env.GCP_REGION }}/services/${{ env.GCP_APP_NAME }}
+          fi
+
+      - name: Terraform Apply Completo (Criar ou Atualizar) 🚀
         run: terraform apply -auto-approve
