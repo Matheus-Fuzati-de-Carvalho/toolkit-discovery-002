@@ -1,13 +1,42 @@
-name: Deploy Hub de Observabilidade
+name: Deploy Manual sob Demanda (Multiprojeto)
 
+# 🎛️ Transforma o deploy em uma ação manual com campos de entrada (inputs)
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
+    inputs:
+      gcp_project_id:
+        description: 'ID do Projeto no GCP (ex: meu-projeto-123)'
+        required: true
+        type: string
+      gcp_project_number:
+        description: 'Número numérico do Projeto no GCP'
+        required: true
+        type: string
+      gcp_region:
+        description: 'Região do GCP (ex: us-central1)'
+        required: true
+        default: 'us-central1'
+        type: string
+      gcp_app_name:
+        description: 'Nome do Aplicativo / Repositório'
+        required: true
+        default: 'hub-observabilidade'
+        type: string
 
 permissions:
   id-token: write
   contents: read
+
+# 🌍 Captura o que você digitou no formulário e injeta nas variáveis
+env:
+  GCP_PROJECT_ID: ${{ inputs.gcp_project_id }}
+  GCP_REGION: ${{ inputs.gcp_region }}
+  GCP_APP_NAME: ${{ inputs.gcp_app_name }}
+  # Conexão automática com o variables.tf do Terraform:
+  TF_VAR_project_id: ${{ inputs.gcp_project_id }}
+  TF_VAR_region: ${{ inputs.gcp_region }}
+  TF_VAR_app_name: ${{ inputs.gcp_app_name }}
+  TF_VAR_artifact_registry_repo: ${{ inputs.gcp_app_name }}
 
 jobs:
   deploy:
@@ -19,30 +48,26 @@ jobs:
       - name: Autenticar no Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: 'projects/${{ vars.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider'
-          service_account: 'gh-actions-sa@toolkit-discovery-001.iam.gserviceaccount.com'
+          workload_identity_provider: "projects/${{ inputs.gcp_project_number }}/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider"
+          service_account: "gh-actions-sa@${{ inputs.gcp_project_id }}.iam.gserviceaccount.com"
 
       - name: Configurar Terraform
         uses: hashicorp/setup-terraform@v3
 
-      - name: Terraform Init e Apply 🏗️
-        run: |
-          terraform init
-          terraform apply -auto-approve
+      - name: Terraform Init 🏗️
+        run: terraform init
+
+      - name: Criar apenas o Artifact Registry 📦
+        run: terraform apply -target=google_artifact_registry_repository.repo -auto-approve
 
       - name: Configurar Autenticação do Docker 🔐
         run: |
-          gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+          gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
-      - name: Build e Push da Imagem 📦
+      - name: Build e Push da Imagem Real 🚀
         run: |
-          docker build -t us-central1-docker.pkg.dev/toolkit-discovery-001/hub-observabilidade/hub-observabilidade:latest .
-          docker push us-central1-docker.pkg.dev/toolkit-discovery-001/hub-observabilidade/hub-observabilidade:latest
+          docker build -t ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GCP_APP_NAME }}/${{ env.GCP_APP_NAME }}:latest .
+          docker push ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GCP_APP_NAME }}/${{ env.GCP_APP_NAME }}:latest
 
-      - name: Atualizar o Serviço no Cloud Run ☁️
-        run: |
-          gcloud run deploy hub-observabilidade \
-            --image=us-central1-docker.pkg.dev/toolkit-discovery-001/hub-observabilidade/hub-observabilidade:latest \
-            --region=us-central1 \
-            --platform=managed \
-            --allow-unauthenticated
+      - name: Terraform Apply Completo (Cloud Run) ☁️
+        run: terraform apply -auto-approve
