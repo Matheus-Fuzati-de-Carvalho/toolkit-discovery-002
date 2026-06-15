@@ -30,7 +30,7 @@ resource "google_cloud_run_v2_service" "app" {
       image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repo}/${var.app_name}:latest"
       
       ports {
-        container_port = 8000
+        container_port = 8080
       }
     }
   }
