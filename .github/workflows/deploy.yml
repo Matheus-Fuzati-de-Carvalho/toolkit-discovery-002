@@ -1,42 +1,34 @@
-name: Deploy Manual sob Demanda (Multiprojeto)
+name: Continuous Deployment (Multi-Ambiente)
 
+# 🎯 O gatilho agora é automático por branch, eliminando o formulário manual causador de erros
 on:
-  workflow_dispatch:
-    inputs:
-      gcp_project_id:
-        description: 'ID do Projeto no GCP (ex: meu-projeto-123)'
-        required: true
-        type: string
-      gcp_project_number:
-        description: 'Número numérico do Projeto no GCP'
-        required: true
-        type: string
-      gcp_region:
-        description: 'Região do GCP (ex: us-central1)'
-        required: true
-        default: 'us-central1'
-        type: string
-      gcp_app_name:
-        description: 'Nome do Aplicativo / Repositório'
-        required: true
-        default: 'hub-observabilidade'
-        type: string
+  push:
+    branches:
+      - dev
+      - hom
 
 permissions:
   id-token: write
   contents: read
 
+# 🧠 Lógica dinâmica: detecta a branch atual e define as variáveis corretas
 env:
-  GCP_PROJECT_ID: ${{ inputs.gcp_project_id }}
-  GCP_REGION: ${{ inputs.gcp_region }}
-  GCP_APP_NAME: ${{ inputs.gcp_app_name }}
-  TF_VAR_project_id: ${{ inputs.gcp_project_id }}
-  TF_VAR_region: ${{ inputs.gcp_region }}
-  TF_VAR_app_name: ${{ inputs.gcp_app_name }}
-  TF_VAR_artifact_registry_repo: ${{ inputs.gcp_app_name }}
+  GCP_PROJECT_ID: toolkit-discovery-001  # Se tiver projetos GCP separados, use a lógica abaixo também
+  GCP_PROJECT_NUMBER: "32174154427"
+  GCP_REGION: us-central1
+  
+  # Se a branch for 'hom', o app será 'hub-observabilidade-hom'. Se não, será 'hub-observabilidade-dev'
+  GCP_APP_NAME: ${{ github.ref_name == 'hom' && 'hub-observabilidade-hom' || 'hub-observabilidade-dev' }}
+  
+  # Variáveis mapeadas para o Terraform ler nativamente
+  TF_VAR_project_id: toolkit-discovery-001
+  TF_VAR_region: us-central1
+  TF_VAR_app_name: ${{ github.ref_name == 'hom' && 'hub-observabilidade-hom' || 'hub-observabilidade-dev' }}
+  TF_VAR_artifact_registry_repo: ${{ github.ref_name == 'hom' && 'hub-observabilidade-hom' || 'hub-observabilidade-dev' }}
 
 jobs:
   deploy:
+    name: Deploy para o Ambiente de ${{ github.ref_name }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout do Código
@@ -45,8 +37,8 @@ jobs:
       - name: Autenticar no Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: "projects/${{ inputs.gcp_project_number }}/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider"
-          service_account: "gh-actions-sa@${{ inputs.gcp_project_id }}.iam.gserviceaccount.com"
+          workload_identity_provider: "projects/${{ env.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider"
+          service_account: "gh-actions-sa@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com"
 
       - name: Configurar Terraform
         uses: hashicorp/setup-terraform@v3
@@ -57,18 +49,17 @@ jobs:
       - name: Verificar e Importar Artifact Registry se existir 📦
         run: |
           if gcloud artifacts repositories describe ${{ env.GCP_APP_NAME }} --location=${{ env.GCP_REGION }} --project=${{ env.GCP_PROJECT_ID }} &>/dev/null; then
-            echo "🎯 O repositório já existe! Sincronizando com o Terraform..."
+            echo "🎯 Repositório de [${{ env.GCP_APP_NAME }}] existe. Sincronizando..."
             terraform import google_artifact_registry_repository.repo projects/${{ env.GCP_PROJECT_ID }}/locations/${{ env.GCP_REGION }}/repositories/${{ env.GCP_APP_NAME }}
           else
-            echo "🆕 Repositório não encontrado. Criando do zero..."
+            echo "🆕 Criando novo repositório para [${{ env.GCP_APP_NAME }}]..."
             terraform apply -target=google_artifact_registry_repository.repo -auto-approve
           fi
 
       - name: Configurar Autenticação do Docker 🔐
-        run: |
-          gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+        run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
-      - name: Build e Push da Imagem Real 🚀
+      - name: Build e Push da Imagem 🚀
         run: |
           docker build -t ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GCP_APP_NAME }}/${{ env.GCP_APP_NAME }}:latest .
           docker push ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GCP_APP_NAME }}/${{ env.GCP_APP_NAME }}:latest
@@ -76,7 +67,7 @@ jobs:
       - name: Verificar e Importar Cloud Run se existir ☁️
         run: |
           if gcloud run services describe ${{ env.GCP_APP_NAME }} --region=${{ env.GCP_REGION }} --project=${{ env.GCP_PROJECT_ID }} &>/dev/null; then
-            echo "🎯 O Cloud Run já existe! Sincronizando para permitir atualização..."
+            echo "🎯 Cloud Run de [${{ env.GCP_APP_NAME }}] existe. Sincronizando..."
             terraform import google_cloud_run_v2_service.app projects/${{ env.GCP_PROJECT_ID }}/locations/${{ env.GCP_REGION }}/services/${{ env.GCP_APP_NAME }}
           fi
 
