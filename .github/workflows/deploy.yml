@@ -1,0 +1,48 @@
+name: Deploy Hub de Observabilidade
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do Código
+        uses: actions/checkout@v4
+
+      - name: Autenticar no Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: 'projects/${{ vars.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-actions-pool/providers/github-provider'
+          service_account: 'gh-actions-sa@toolkit-discovery-001.iam.gserviceaccount.com'
+
+      - name: Configurar Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init e Apply 🏗️
+        run: |
+          terraform init
+          terraform apply -auto-approve
+
+      - name: Configurar Autenticação do Docker 🔐
+        run: |
+          gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - name: Build e Push da Imagem 📦
+        run: |
+          docker build -t us-central1-docker.pkg.dev/toolkit-discovery-001/hub-observabilidade/hub-observabilidade:latest .
+          docker push us-central1-docker.pkg.dev/toolkit-discovery-001/hub-observabilidade/hub-observabilidade:latest
+
+      - name: Atualizar o Serviço no Cloud Run ☁️
+        run: |
+          gcloud run deploy hub-observabilidade \
+            --image=us-central1-docker.pkg.dev/toolkit-discovery-001/hub-observabilidade/hub-observabilidade:latest \
+            --region=us-central1 \
+            --platform=managed \
+            --allow-unauthenticated

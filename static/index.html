@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catálogo de Dados - Sumário de Datasets</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: { 
+                extend: { 
+                    colors: { 
+                        gcp: { blue: '#1a73e8', gray: '#f8f9fa', border: '#dadce0', text: '#3c4043', dark: '#202124', lightBlue: '#e8f0fe' }
+                    } 
+                } 
+            }
+        }
+    </script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        body { @apply bg-slate-50 text-slate-700 font-sans; overflow-x: hidden; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f3f4; }
+        ::-webkit-scrollbar-thumb { background: #c1c4c6; border-radius: 3px; }
+        [v-cloak] { display: none; }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden text-xs">
+    <div id="app" class="flex w-full h-full" v-cloak>
+        
+        <div v-if="toast" class="fixed top-5 right-5 bg-red-50 border-l-4 border-red-500 text-red-900 px-4 py-3 rounded shadow-lg z-50 flex items-center justify-between gap-3">
+            <span class="font-medium">⚠️ {{ toast }}</span>
+            <button @click="toast = null" class="text-red-400 hover:text-red-900 font-bold">✕</button>
+        </div>
+
+        <aside class="w-64 bg-white border-r border-gcp-border flex flex-col h-full shrink-0 shadow-sm">
+            <div class="p-4 border-b border-gcp-border bg-slate-50 flex items-center gap-2">
+                <div class="w-3 h-3 bg-gcp-blue rounded-sm"></div>
+                <h1 class="text-xs font-bold text-gcp-dark tracking-tight">Catálogo BigQuery</h1>
+            </div>
+            <div class="overflow-y-auto p-3 space-y-1.5 flex-1 bg-gcp-gray/30">
+                <div class="text-[10px] font-bold text-slate-400 uppercase px-2 tracking-wider mb-1">Datasets Disponíveis</div>
+                <div v-for="ds in datasets" :key="ds.dataset_id">
+                    <button @click="loadDatasetHealth(ds.dataset_id)" :class="['w-full text-left px-2 py-1.5 rounded text-xs border transition-all', activeDataset === ds.dataset_id ? 'bg-white border-gcp-border text-gcp-dark font-bold shadow-sm' : 'bg-transparent border-transparent text-slate-600 hover:bg-gray-100']">
+                        <span class="truncate block">🗄️ {{ ds.dataset_id }}</span>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <main class="flex-1 flex flex-col h-full overflow-y-auto relative p-6">
+            
+            <div v-if="activeView === 'empty'" class="flex-1 flex items-center justify-center flex-col text-slate-400">
+                <svg class="w-10 h-10 mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"></path>
+                </svg>
+                <p class="font-medium text-xs">Selecione um Dataset na barra lateral para visualizar o resumo operacional.</p>
+            </div>
+
+            <div v-else-if="isLoadingHealth" class="flex-1 flex items-center justify-center flex-col text-gcp-blue font-medium animate-pulse">
+                <span>Buscando e consolidando metadados do BigQuery...</span>
+            </div>
+
+            <div v-else-if="activeView === 'dataset'" class="w-full max-w-7xl mx-auto space-y-5">
+                <header class="bg-white p-4 rounded-lg border border-gcp-border shadow-sm border-t-4 border-t-gcp-blue">
+                    <span class="text-[10px] text-gcp-blue font-bold uppercase tracking-wider block mb-0.5">Resumo do Dataset</span>
+                    <h2 class="text-lg font-bold text-gcp-dark">📊 {{ activeDataset }}</h2>
+                </header>
+
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    <div class="bg-white p-3 rounded-lg border border-gcp-border shadow-sm">
+                        <div class="text-slate-400 text-[10px] font-bold uppercase mb-0.5">Região</div>
+                        <div class="text-base font-black text-gcp-dark font-mono">{{ datasetHealth?.location }}</div>
+                    </div>
+                    <div class="bg-white p-3 rounded-lg border border-gcp-border shadow-sm">
+                        <div class="text-slate-400 text-[10px] font-bold uppercase mb-0.5">Total Tabelas</div>
+                        <div class="text-base font-black text-gcp-dark font-mono">{{ datasetHealth?.kpis.total_tables }}</div>
+                    </div>
+                    <div class="bg-white p-3 rounded-lg border border-gcp-border shadow-sm">
+                        <div class="text-slate-400 text-[10px] font-bold uppercase mb-0.5">Tabelas Vazias</div>
+                        <div class="text-base font-black text-red-600 font-mono">{{ datasetHealth?.kpis.empty_tables }}</div>
+                    </div>
+                    <div class="bg-white p-3 rounded-lg border border-gcp-border shadow-sm">
+                        <div class="text-slate-400 text-[10px] font-bold uppercase mb-0.5">Tamanho Total</div>
+                        <div class="text-base font-black text-gcp-blue font-mono">{{ formatBytes(datasetHealth?.kpis.total_size_bytes) }}</div>
+                    </div>
+                    <div class="bg-white p-3 rounded-lg border border-gcp-border shadow-sm">
+                        <div class="text-slate-400 text-[10px] font-bold uppercase mb-0.5">Total Linhas</div>
+                        <div class="text-base font-black text-gcp-dark font-mono">{{ formatNumber(datasetHealth?.kpis.total_rows) }}</div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-4 rounded-lg border border-gcp-border shadow-sm">
+                    <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">SLA de Atualização (Janelas de Tempo Decorrido)</h3>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-center">
+                        <div class="bg-emerald-50/50 border border-emerald-100 p-2 rounded">
+                            <span class="text-[10px] text-slate-500 block mb-0.5">Até 12h</span>
+                            <span class="text-md font-bold text-emerald-700 font-mono">{{ datasetHealth?.kpis.h12 }}</span>
+                        </div>
+                        <div class="bg-teal-50/50 border border-teal-100 p-2 rounded">
+                            <span class="text-[10px] text-slate-500 block mb-0.5">12h a 24h</span>
+                            <span class="text-md font-bold text-teal-700 font-mono">{{ datasetHealth?.kpis.h24 }}</span>
+                        </div>
+                        <div class="bg-blue-50/50 border border-blue-100 p-2 rounded">
+                            <span class="text-[10px] text-slate-500 block mb-0.5">24h a 48h</span>
+                            <span class="text-md font-bold text-blue-700 font-mono">{{ datasetHealth?.kpis.h48 }}</span>
+                        </div>
+                        <div class="bg-amber-50/50 border border-amber-100 p-2 rounded">
+                            <span class="text-[10px] text-slate-500 block mb-0.5">48h a 7 dias</span>
+                            <span class="text-md font-bold text-amber-700 font-mono">{{ datasetHealth?.kpis.w1 }}</span>
+                        </div>
+                        <div class="bg-orange-50/50 border border-orange-100 p-2 rounded">
+                            <span class="text-[10px] text-slate-500 block mb-0.5">7 dias a 1 mês</span>
+                            <span class="text-md font-bold text-orange-700 font-mono">{{ datasetHealth?.kpis.m1 }}</span>
+                        </div>
+                        <div class="bg-red-50/50 border border-red-100 p-2 rounded">
+                            <span class="text-[10px] text-slate-500 block mb-0.5">> 1 mês</span>
+                            <span class="text-md font-bold text-red-700 font-mono">{{ datasetHealth?.kpis.old }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg border border-gcp-border shadow-sm overflow-hidden">
+                    <div class="p-3 bg-slate-50 border-b border-gcp-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                            <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Ativos de Dados</h3>
+                            <p class="text-[10px] text-slate-400">Ordene clicando nos cabeçalhos e filtre em tempo real por nome/id.</p>
+                        </div>
+                        <div class="w-full sm:w-64">
+                            <input type="text" v-model="tableSearch" placeholder="🔍 Filtrar por ID de tabela..." class="w-full text-xs px-2 py-1.5 bg-white border border-gcp-border rounded focus:outline-none focus:border-gcp-blue transition">
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs whitespace-nowrap">
+                            <thead class="bg-gcp-gray text-slate-500 font-bold border-b border-gcp-border uppercase text-[10px] select-none">
+                                <tr>
+                                    <th @click="sortTables('table_id')" class="px-4 py-2.5 cursor-pointer hover:bg-gray-200 transition">Nome / ID {{ renderSortIcon('table_id') }}</th>
+                                    <th @click="sortTables('table_type')" class="px-3 py-2.5 cursor-pointer hover:bg-gray-200 transition">Tipo {{ renderSortIcon('table_type') }}</th>
+                                    <th @click="sortTables('created_time')" class="px-3 py-2.5 cursor-pointer hover:bg-gray-200 transition">Data de Criação {{ renderSortIcon('created_time') }}</th>
+                                    <th @click="sortTables('modified_time')" class="px-3 py-2.5 cursor-pointer hover:bg-gray-200 transition">Data e Hora de Atualização {{ renderSortIcon('modified_time') }}</th>
+                                    <th @click="sortTables('row_count')" class="px-3 py-2.5 text-right cursor-pointer hover:bg-gray-200 transition">Qtd de Linhas {{ renderSortIcon('row_count') }}</th>
+                                    <th @click="sortTables('size_bytes')" class="px-3 py-2.5 text-right cursor-pointer hover:bg-gray-200 transition">Volume em Bytes {{ renderSortIcon('size_bytes') }}</th>
+                                    <th @click="sortTables('location')" class="px-4 py-2.5 text-center cursor-pointer hover:bg-gray-200 transition">Região {{ renderSortIcon('location') }}</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                <tr v-for="table in filteredTables" :key="table.table_id" class="hover:bg-slate-50 transition-colors">
+                                    <td class="px-4 py-2.5 font-bold text-gcp-dark font-mono flex items-center gap-1.5">
+                                        <span>{{ table.table_type === 'VIEW' ? '👁️' : '📄' }}</span> {{ table.table_id }}
+                                    </td>
+                                    <td class="px-3 py-2.5">
+                                        <span class="text-[9px] px-1.5 py-0.5 rounded font-bold" :class="table.table_type === 'VIEW' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-700'">{{ table.table_type }}</span>
+                                    </td>
+                                    <td class="px-3 py-2.5 text-slate-500 font-mono">{{ table.created_time }}</td>
+                                    <td class="px-3 py-2.5 text-slate-500 font-mono">{{ table.modified_time }}</td>
+                                    <td class="px-3 py-2.5 text-right font-mono font-semibold" :class="table.row_count === 0 ? 'text-red-500' : 'text-slate-700'">{{ formatNumber(table.row_count) }}</td>
+                                    <td class="px-3 py-2.5 text-right font-mono font-semibold text-gcp-blue">{{ formatBytes(table.size_bytes) }}</td>
+                                    <td class="px-4 py-2.5 text-center font-mono text-slate-500">{{ table.location }}</td>
+                                </tr>
+                                <tr v-if="filteredTables.length === 0">
+                                    <td colspan="7" class="text-center py-6 text-slate-400 bg-slate-50/50">Nenhuma tabela correspondente encontrada.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const datasets = ref([]);
+                const activeDataset = ref(null);
+                const activeView = ref('empty'); 
+                const datasetHealth = ref(null);
+                const isLoadingHealth = ref(false);
+                const tableSearch = ref('');
+                const tableSortKey = ref('table_id');
+                const tableSortOrder = ref('asc');
+                const toast = ref(null);
+
+                const showToast = (msg) => { toast.value = msg; setTimeout(() => toast.value = null, 4000); };
+                const formatNumber = (num) => new Intl.NumberFormat('pt-BR').format(num || 0);
+                
+                const formatBytes = (bytes) => {
+                    if (!bytes || bytes === 0) return '0 B';
+                    const k = 1024, sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+                    const i = Math.floor(Math.log(bytes) / Math.log(k));
+                    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+                };
+
+                const fetchDatasets = async () => {
+                    try {
+                        const res = await fetch('/api/datasets');
+                        if (!res.ok) throw new Error("Erro de comunicação com o servidor.");
+                        datasets.value = await res.json();
+                    } catch (e) {
+                        showToast("Não foi possível listar os datasets: " + e.message);
+                    }
+                };
+
+                const loadDatasetHealth = async (datasetId) => {
+                    activeDataset.value = datasetId;
+                    activeView.value = 'dataset';
+                    isLoadingHealth.value = true;
+                    datasetHealth.value = null;
+                    tableSearch.value = '';
+                    try {
+                        const res = await fetch(`/api/dataset-health/${datasetId}`);
+                        if (!res.ok) throw new Error("Erro na consolidação de metadados.");
+                        datasetHealth.value = await res.json();
+                    } catch (e) {
+                        showToast("Falha ao computar sumário: " + e.message);
+                        activeView.value = 'empty';
+                    } finally {
+                        isLoadingHealth.value = false;
+                    }
+                };
+
+                const sortTables = (key) => {
+                    if (tableSortKey.value === key) {
+                        tableSortOrder.value = tableSortOrder.value === 'asc' ? 'desc' : 'asc';
+                    } else {
+                        tableSortKey.value = key;
+                        tableSortOrder.value = 'asc';
+                    }
+                };
+
+                const renderSortIcon = (key) => {
+                    if (tableSortKey.value !== key) return '↕';
+                    return tableSortOrder.value === 'asc' ? '▲' : '▼';
+                };
+
+                const computedFilteredTables = computed(() => {
+                    if (!datasetHealth.value?.tables_detailed) return [];
+                    let result = [...datasetHealth.value.tables_detailed];
+                    
+                    // Mecanismo de busca / filtro por ID
+                    if (tableSearch.value && tableSearch.value.trim()) {
+                        const searchStr = tableSearch.value.toLowerCase();
+                        result = result.filter(t => t.table_id.toLowerCase().includes(searchStr));
+                    }
+
+                    // Mecanismo de ordenação dinâmica das colunas
+                    const key = tableSortKey.value;
+                    const order = tableSortOrder.value === 'asc' ? 1 : -1;
+                    
+                    result.sort((a, b) => {
+                        let valA = a[key];
+                        let valB = b[key];
+
+                        if (valA === null || valA === undefined) return 1;
+                        if (valB === null || valB === undefined) return -1;
+
+                        if (typeof valA === 'string') {
+                            return valA.localeCompare(valB) * order;
+                        }
+                        return (valA - valB) * order;
+                    });
+
+                    return result;
+                });
+
+                onMounted(() => {
+                    fetchDatasets();
+                });
+
+                return {
+                    datasets, activeDataset, activeView, datasetHealth, isLoadingHealth, tableSearch,
+                    tableSortKey, tableSortOrder, toast, formatNumber, formatBytes, loadDatasetHealth,
+                    sortTables, renderSortIcon, filteredTables: computedFilteredTables
+                }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>
