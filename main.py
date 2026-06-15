@@ -27,21 +27,20 @@ def list_datasets():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao listar Datasets: {str(e)}")
 
-# Rota 1: Busca metadados estruturais e colunas elegíveis para filtro de data (Custo Zero)
 @app.get("/api/table-metadata/{dataset_id}/{table_id}")
 def get_table_metadata(dataset_id: str, table_id: str):
     try:
         table_ref = f"{PROJECT_ID}.{dataset_id}.{table_id}"
         table = bq_client.get_table(table_ref)
         
-        # Filtra apenas colunas temporais elegíveis para o dropdown de filtro D-X
+        # Correção FinOps: .field_type avalia os tipos primitivos temporais reais
         date_columns = [
             field.name for field in table.schema 
-            if field.type in ["DATE", "DATETIME", "TIMESTAMP"] and field.mode != "REPEATED"
+            if field.field_type in ["DATE", "DATETIME", "TIMESTAMP"] and field.mode != "REPEATED"
         ]
         
         schema_info = [
-            {"name": field.name, "type": field.type, "mode": field.mode}
+            {"name": field.name, "type": field.field_type, "mode": field.mode}
             for field in table.schema
         ]
         
@@ -75,7 +74,7 @@ def run_table_profiling(
         
         for field in table.schema:
             # Ignora estruturas complexas ou aninhadas para prevenir falhas de agregação
-            if field.type in ["RECORD", "STRUCT"] or field.mode == "REPEATED":
+            if field.field_type in ["RECORD", "STRUCT"] or field.mode == "REPEATED":
                 continue
             
             escaped_col = f"`{field.name}`"
@@ -85,7 +84,7 @@ def run_table_profiling(
             select_clauses.append(f"APPROX_COUNT_DISTINCT({escaped_col}) AS {field.name}__approx_distinct")
             
             # Limites físicos aceitos por tipos primitivos e temporais
-            if field.type in ["INTEGER", "FLOAT", "NUMERIC", "BIGNUMERIC", "INT64", "FLOAT64", "DATE", "DATETIME", "TIMESTAMP"]:
+            if field.field_type in ["INTEGER", "FLOAT", "NUMERIC", "BIGNUMERIC", "INT64", "FLOAT64", "DATE", "DATETIME", "TIMESTAMP"]:
                 select_clauses.append(f"MIN({escaped_col}) AS {field.name}__min")
                 select_clauses.append(f"MAX({escaped_col}) AS {field.name}__max")
         
@@ -98,10 +97,11 @@ def run_table_profiling(
         if date_column and days_lookback is not None:
             target_field = next((f for f in table.schema if f.name == date_column), None)
             if target_field:
-                if target_field.type == "DATE":
+                # Tratamento explícito de tipos temporais nativos do BQ para montagem de query segura
+                if target_field.field_type == "DATE":
                     where_clauses.append(f"`{date_column}` >= DATE_SUB(CURRENT_DATE(), INTERVAL {days_lookback} DAY)")
-                elif target_field.type in ["TIMESTAMP", "DATETIME"]:
-                    where_clauses.append(f"`{date_column}` >= {target_field.type}_SUB(CURRENT_{target_field.type}(), INTERVAL {days_lookback} DAY)")
+                elif target_field.field_type in ["TIMESTAMP", "DATETIME"]:
+                    where_clauses.append(f"`{date_column}` >= {target_field.field_type}_SUB(CURRENT_{target_field.field_type}(), INTERVAL {days_lookback} DAY)")
                 else:
                     where_clauses.append(f"`{date_column}` >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days_lookback} DAY)")
                 
@@ -134,9 +134,9 @@ def run_table_profiling(
         
         columns_profiling = []
         for field in table.schema:
-            if field.type in ["RECORD", "STRUCT"] or field.mode == "REPEATED":
+            if field.field_type in ["RECORD", "STRUCT"] or field.mode == "REPEATED":
                 columns_profiling.append({
-                    "name": field.name, "type": field.type, "mode": field.mode, "status": "unsupported"
+                    "name": field.name, "type": field.field_type, "mode": field.mode, "status": "unsupported"
                 })
                 continue
                 
@@ -156,7 +156,7 @@ def run_table_profiling(
                 
             columns_profiling.append({
                 "name": field.name,
-                "type": field.type,
+                "type": field.field_type,
                 "mode": field.mode,
                 "status": "profiled",
                 "completeness_percent": round(completeness, 2),
