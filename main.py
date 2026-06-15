@@ -26,14 +26,15 @@ def list_datasets():
         return [{"dataset_id": d.dataset_id} for d in datasets]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao listar Datasets: {str(e)}")
-
+    
+# Rota 1: Busca metadados estruturais e colunas elegíveis para filtro de data (Custo Zero)
 @app.get("/api/table-metadata/{dataset_id}/{table_id}")
 def get_table_metadata(dataset_id: str, table_id: str):
     try:
         table_ref = f"{PROJECT_ID}.{dataset_id}.{table_id}"
         table = bq_client.get_table(table_ref)
         
-        # Correção FinOps: .field_type avalia os tipos primitivos temporais reais
+        # Filtra apenas colunas temporais elegíveis para o dropdown de filtro D-X
         date_columns = [
             field.name for field in table.schema 
             if field.field_type in ["DATE", "DATETIME", "TIMESTAMP"] and field.mode != "REPEATED"
@@ -53,6 +54,7 @@ def get_table_metadata(dataset_id: str, table_id: str):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao capturar metadados: {str(e)}")
+
 
 # Rota 2: Executa Simulação FinOps (Dry Run) ou o Profiling Estatístico Real
 @app.get("/api/table-profiling-run/{dataset_id}/{table_id}")
@@ -83,8 +85,8 @@ def run_table_profiling(
             # Unicidade Econômica FinOps (HyperLogLog)
             select_clauses.append(f"APPROX_COUNT_DISTINCT({escaped_col}) AS {field.name}__approx_distinct")
             
-            # Limites físicos aceitos por tipos primitivos e temporais
-            if field.field_type in ["INTEGER", "FLOAT", "NUMERIC", "BIGNUMERIC", "INT64", "FLOAT64", "DATE", "DATETIME", "TIMESTAMP"]:
+            # Solução: Habilita MIN/MAX para tipos textuais (STRING) e booleanos, além de numéricos/temporais
+            if field.field_type in ["INTEGER", "FLOAT", "NUMERIC", "BIGNUMERIC", "INT64", "FLOAT64", "DATE", "DATETIME", "TIMESTAMP", "STRING", "BOOLEAN"]:
                 select_clauses.append(f"MIN({escaped_col}) AS {field.name}__min")
                 select_clauses.append(f"MAX({escaped_col}) AS {field.name}__max")
         
@@ -97,7 +99,6 @@ def run_table_profiling(
         if date_column and days_lookback is not None:
             target_field = next((f for f in table.schema if f.name == date_column), None)
             if target_field:
-                # Tratamento explícito de tipos temporais nativos do BQ para montagem de query segura
                 if target_field.field_type == "DATE":
                     where_clauses.append(f"`{date_column}` >= DATE_SUB(CURRENT_DATE(), INTERVAL {days_lookback} DAY)")
                 elif target_field.field_type in ["TIMESTAMP", "DATETIME"]:
@@ -146,6 +147,9 @@ def run_table_profiling(
             completeness = (count_filled / total_sampled_rows * 100) if total_sampled_rows > 0 else 0
             uniqueness = (approx_distinct / count_filled * 100) if count_filled > 0 else 0
             
+            # Solução de Contenção Estatística: Limita o teto da aproximação do HyperLogLog a 100%
+            uniqueness_capped = min(uniqueness, 100.0)
+            
             min_val = row.get(f"{field.name}__min")
             max_val = row.get(f"{field.name}__max")
             
@@ -161,7 +165,7 @@ def run_table_profiling(
                 "status": "profiled",
                 "completeness_percent": round(completeness, 2),
                 "approx_distinct_count": approx_distinct,
-                "uniqueness_percent": round(uniqueness, 2),
+                "uniqueness_percent": round(uniqueness_capped, 2),
                 "min": str(min_val) if pd.notnull(min_val) else None,
                 "max": str(max_val) if pd.notnull(max_val) else None
             })
@@ -171,7 +175,8 @@ def run_table_profiling(
             "table_id": table_id,
             "total_rows": table.num_rows,
             "sampled_rows": total_sampled_rows,
-            "columns": columns_profiling
+            "columns": columns_profiling,
+            "query_generated": query  # Solução: Expõe a query estruturada também no sucesso
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -235,6 +235,16 @@
                                 </div>
                             </div>
 
+                            <div v-if="activeQuery" class="bg-slate-900 rounded-lg overflow-hidden border border-slate-800 shadow-sm">
+                                <div class="px-3 py-1.5 bg-slate-800 text-slate-300 font-bold text-[9px] flex justify-between items-center select-none uppercase tracking-wider">
+                                    <span>🔮 SQL Query Real Executada (Mecanismo de Auditoria FinOps)</span>
+                                    <button @click="copyQueryToClipboard" class="text-gcp-lightBlue hover:text-white transition text-[9px] font-bold">
+                                        📋 Copiar SQL
+                                    </button>
+                                </div>
+                                <pre class="p-3 text-emerald-400 font-mono text-[10px] overflow-x-auto max-h-40 whitespace-pre-wrap leading-relaxed select-all bg-slate-950">{{ activeQuery }}</pre>
+                            </div>
+
                             <div v-if="profilingResult" class="bg-slate-50 p-2 rounded border border-dashed text-[10px] text-slate-500 font-mono flex gap-4">
                                 <div><strong>Registros na Amostra:</strong> {{ formatNumber(profilingResult.sampled_rows) }} / {{ formatNumber(profilingResult.total_rows) }}</div>
                             </div>
@@ -249,7 +259,7 @@
                                             <th v-if="profilingResult" class="px-2 py-2 text-right">Unicidade (HLL)</th>
                                             <th v-if="profilingResult" class="px-3 py-2">Valor Mínimo (MIN)</th>
                                             <th v-if="profilingResult" class="px-3 py-2">Valor Máximo (MAX)</th>
-                                            <th v-else class="px-3 py-2">Modo de Aceitação</th>
+                                            <th class="px-3 py-2" v-else>Modo de Aceitação</th>
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-gray-100 font-mono text-[11px]">
@@ -305,7 +315,7 @@
                 const tableSortOrder = ref('asc');
                 const toast = ref(null);
 
-                // Novas variáveis de estado reativas do Módulo de Qualidade FinOps
+                // Variáveis de estado reativas do Módulo de Qualidade FinOps
                 const isProfileModalOpen = ref(false);
                 const selectedTableMetadata = ref(null);
                 const profileSamplePercent = ref(10);
@@ -315,6 +325,7 @@
                 const isProfilingLoading = ref(false);
                 const costEstimation = ref(null);
                 const profilingResult = ref(null);
+                const activeQuery = ref(''); // Armazena a query SQL gerada de forma reativa
 
                 const showToast = (msg) => { toast.value = msg; setTimeout(() => toast.value = null, 4000); };
                 const formatNumber = (num) => new Intl.NumberFormat('pt-BR').format(num || 0);
@@ -360,6 +371,7 @@
                     isMetadataLoading.value = true;
                     costEstimation.value = null;
                     profilingResult.value = null;
+                    activeQuery.value = ''; // Reseta a exibição da query anterior
                     profileSamplePercent.value = 10;
                     profileDateColumn.value = '';
                     profileDaysLookback.value = null;
@@ -368,7 +380,6 @@
                     try {
                         const res = await fetch(`/api/table-metadata/${activeDataset.value}/${tableId}`);
                         if (!res.ok) {
-                            // CAPTURA A MENSAGEM REAL ENVIADA PELO FASTAPI
                             const errData = await res.json();
                             throw new Error(errData.detail || "Erro na captura estrutural do schema técnico.");
                         }
@@ -379,14 +390,13 @@
                             profileSamplePercent.value = 100;
                         }
                     } catch (e) {
-                        // Exibirá o erro real no Toast da tela
                         showToast("Falha na varredura inicial: " + e.message);
                         isProfileModalOpen.value = false;
                     } finally {
                         isMetadataLoading.value = false;
                     }
                 };
-                
+
                 // Orquestrador de Execução Analítica (Ação FinOps Dry Run vs Run Efetivo)
                 const runProfilingAction = async (isDryRun) => {
                     if (!selectedTableMetadata.value) return;
@@ -409,6 +419,8 @@
                         }
                         
                         const data = await res.json();
+                        activeQuery.value = data.query_generated || ''; // Captura dinamicamente a query em qualquer fluxo
+                        
                         if (isDryRun) {
                             costEstimation.value = data;
                         } else {
@@ -419,6 +431,14 @@
                     } finally {
                         isProfilingLoading.value = false;
                     }
+                };
+
+                // Auxiliar de clipboard para cópia assistida do código SQL
+                const copyQueryToClipboard = () => {
+                    if (!activeQuery.value) return;
+                    navigator.clipboard.writeText(activeQuery.value)
+                        .then(() => showToast("Query SQL copiada para a área de transferência!"))
+                        .catch(() => showToast("Falha ao copiar automaticamente."));
                 };
 
                 const sortTables = (key) => {
@@ -471,10 +491,9 @@
                     datasets, activeDataset, activeView, datasetHealth, isLoadingHealth, tableSearch,
                     tableSortKey, tableSortOrder, toast, formatNumber, formatBytes, loadDatasetHealth,
                     sortTables, renderSortIcon, filteredTables: computedFilteredTables,
-                    // Exposição dos novos estados e comportamentos reativos ao template HTML
                     isProfileModalOpen, selectedTableMetadata, profileSamplePercent, profileDateColumn,
                     profileDaysLookback, isMetadataLoading, isProfilingLoading, costEstimation,
-                    profilingResult, openProfileModal, runProfilingAction
+                    profilingResult, activeQuery, openProfileModal, runProfilingAction, copyQueryToClipboard
                 }
             }
         }).mount('#app')
