@@ -195,7 +195,16 @@
                             <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Amostragem (%)</label>
                             <input type="number" v-model="profileSamplePercent" :disabled="selectedTableMetadata?.table_type === 'VIEW'" min="1" max="100" class="w-full text-xs p-1.5 border border-gcp-border rounded bg-white disabled:bg-slate-100 disabled:text-slate-400 font-mono">
                         </div>
-                        <div class="md:col-span-3">
+                        
+                        <div class="md:col-span-2">
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">MÉTODO UNICIDADE</label>
+                            <select v-model="profileExactDistinct" @change="handleUniquenessMethodChange" class="w-full text-xs p-1.5 border border-gcp-border rounded bg-white font-mono font-bold" :class="profileExactDistinct ? 'text-purple-700 border-purple-300' : 'text-slate-700'">
+                                <option :value="false">Aproximado (Econômico)</option>
+                                <option :value="true">Exato (Rígido)</option>
+                            </select>
+                        </div>
+
+                        <div class="md:col-span-2">
                             <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Coluna de Data</label>
                             <select v-model="profileDateColumn" class="w-full text-xs p-1.5 border border-gcp-border rounded bg-white font-mono">
                                 <option value="">-- Sem filtro temporal --</option>
@@ -206,7 +215,7 @@
                             <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Janela (D-X Dias)</label>
                             <input type="number" v-model="profileDaysLookback" :disabled="!profileDateColumn" placeholder="Ex: 7" class="w-full text-xs p-1.5 border border-gcp-border rounded bg-white disabled:bg-slate-100 font-mono">
                         </div>
-                        <div class="md:col-span-5 flex gap-2">
+                        <div class="md:col-span-4 flex gap-2">
                             <button @click="runProfilingAction(true)" :disabled="isProfilingLoading || isMetadataLoading" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-1.5 px-2 rounded text-xs transition disabled:opacity-50">
                                 🧮 Estimar Custo
                             </button>
@@ -325,7 +334,8 @@
                 const isProfilingLoading = ref(false);
                 const costEstimation = ref(null);
                 const profilingResult = ref(null);
-                const activeQuery = ref(''); // Armazena a query SQL gerada de forma reativa
+                const activeQuery = ref('');
+                const profileExactDistinct = ref(false); // Estado para alternar entre aproximado (false) e exato (true)
 
                 const showToast = (msg) => { toast.value = msg; setTimeout(() => toast.value = null, 4000); };
                 const formatNumber = (num) => new Intl.NumberFormat('pt-BR').format(num || 0);
@@ -365,14 +375,31 @@
                     }
                 };
 
+                // Interceptador de alteração do método de unicidade com mensagem simples e fundamentada
+                const handleUniquenessMethodChange = () => {
+                    if (profileExactDistinct.value === true) {
+                        const currentCost = costEstimation.value ? costEstimation.value.cost_usd.toFixed(6) : "0.000000";
+                        
+                        const msg = `Confirmação de Precisão:\n\n` +
+                                    `Mudar para o modo Exato aumentará em média 1% a precisão dos dados (eliminando a margem de variação estatística natural <1% da engine APPROX do BigQuery).\n\n` +
+                                    `A varredura de dados custará os mesmos $ ${currentCost}, porém consumirá significativamente mais recursos de CPU (Slots) da nuvem.\n\n` +
+                                    `Deseja aplicar a mudança?`;
+                                    
+                        if (!confirm(msg)) {
+                            profileExactDistinct.value = false;
+                        }
+                    }
+                };
+
                 // Orquestrador de Inicialização e Abertura do Modal de Schema (Custo Zero)
                 const openProfileModal = async (tableId) => {
                     isProfileModalOpen.value = true;
                     isMetadataLoading.value = true;
                     costEstimation.value = null;
                     profilingResult.value = null;
-                    activeQuery.value = ''; // Reseta a exibição da query anterior
+                    activeQuery.value = '';
                     profileSamplePercent.value = 10;
+                    profileExactDistinct.value = false; // Garante o reset para a abordagem econômica
                     profileDateColumn.value = '';
                     profileDaysLookback.value = null;
                     selectedTableMetadata.value = null;
@@ -406,7 +433,7 @@
                     else profilingResult.value = null;
                     
                     try {
-                        let url = `/api/table-profiling-run/${activeDataset.value}/${selectedTableMetadata.value.table_id}?dry_run=${isDryRun}&sample_percent=${profileSamplePercent.value}`;
+                        let url = `/api/table-profiling-run/${activeDataset.value}/${selectedTableMetadata.value.table_id}?dry_run=${isDryRun}&sample_percent=${profileSamplePercent.value}&exact_distinct=${profileExactDistinct.value}`;
                         
                         if (profileDateColumn.value && profileDaysLookback.value !== null) {
                             url += `&date_column=${profileDateColumn.value}&days_lookback=${profileDaysLookback.value}`;
@@ -419,7 +446,7 @@
                         }
                         
                         const data = await res.json();
-                        activeQuery.value = data.query_generated || ''; // Captura dinamicamente a query em qualquer fluxo
+                        activeQuery.value = data.query_generated || '';
                         
                         if (isDryRun) {
                             costEstimation.value = data;
@@ -433,7 +460,6 @@
                     }
                 };
 
-                // Auxiliar de clipboard para cópia assistida do código SQL
                 const copyQueryToClipboard = () => {
                     if (!activeQuery.value) return;
                     navigator.clipboard.writeText(activeQuery.value)
@@ -493,7 +519,8 @@
                     sortTables, renderSortIcon, filteredTables: computedFilteredTables,
                     isProfileModalOpen, selectedTableMetadata, profileSamplePercent, profileDateColumn,
                     profileDaysLookback, isMetadataLoading, isProfilingLoading, costEstimation,
-                    profilingResult, activeQuery, openProfileModal, runProfilingAction, copyQueryToClipboard
+                    profilingResult, activeQuery, profileExactDistinct, openProfileModal, runProfilingAction, 
+                    copyQueryToClipboard, handleUniquenessMethodChange
                 }
             }
         }).mount('#app')

@@ -64,7 +64,8 @@ def run_table_profiling(
     dry_run: bool = True,
     sample_percent: Optional[float] = 100.0,
     date_column: Optional[str] = None,
-    days_lookback: Optional[int] = None
+    days_lookback: Optional[int] = None,
+    exact_distinct: bool = False  # Parâmetro FinOps adicionado para controle de algoritmo
 ):
     try:
         table_ref = f"{PROJECT_ID}.{dataset_id}.{table_id}"
@@ -82,10 +83,14 @@ def run_table_profiling(
             escaped_col = f"`{field.name}`"
             # Auxiliares para cálculo de Completude
             select_clauses.append(f"COUNT({escaped_col}) AS {field.name}__count_filled")
-            # Unicidade Econômica FinOps (HyperLogLog)
-            select_clauses.append(f"APPROX_COUNT_DISTINCT({escaped_col}) AS {field.name}__approx_distinct")
             
-            # Solução: Habilita MIN/MAX para tipos textuais (STRING) e booleanos, além de numéricos/temporais
+            # Alternância algorítmica: COUNT(DISTINCT) Exato vs APPROX_COUNT_DISTINCT Econômico
+            if exact_distinct:
+                select_clauses.append(f"COUNT(DISTINCT {escaped_col}) AS {field.name}__approx_distinct")
+            else:
+                select_clauses.append(f"APPROX_COUNT_DISTINCT({escaped_col}) AS {field.name}__approx_distinct")
+            
+            # Habilita MIN/MAX para tipos textuais (STRING) e booleanos, além de numéricos/temporais
             if field.field_type in ["INTEGER", "FLOAT", "NUMERIC", "BIGNUMERIC", "INT64", "FLOAT64", "DATE", "DATETIME", "TIMESTAMP", "STRING", "BOOLEAN"]:
                 select_clauses.append(f"MIN({escaped_col}) AS {field.name}__min")
                 select_clauses.append(f"MAX({escaped_col}) AS {field.name}__max")
@@ -176,7 +181,7 @@ def run_table_profiling(
             "total_rows": table.num_rows,
             "sampled_rows": total_sampled_rows,
             "columns": columns_profiling,
-            "query_generated": query  # Solução: Expõe a query estruturada também no sucesso
+            "query_generated": query  # Expõe a query estruturada também no sucesso
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
