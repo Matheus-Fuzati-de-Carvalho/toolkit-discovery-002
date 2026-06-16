@@ -65,12 +65,15 @@ def run_table_profiling(
     sample_percent: Optional[float] = 100.0,
     date_column: Optional[str] = None,
     days_lookback: Optional[int] = None,
-    exact_distinct: bool = False  # Parâmetro FinOps adicionado para controle de algoritmo
+    exact_distinct: bool = False
 ):
     try:
         table_ref = f"{PROJECT_ID}.{dataset_id}.{table_id}"
         table = bq_client.get_table(table_ref)
         is_view = table.table_type == "VIEW"
+        
+        # Define dinamicamente o sufixo do alias para não confundir o usuário engenheiro
+        uniqueness_suffix = "__exact_distinct" if exact_distinct else "__approx_distinct"
         
         # Início da montagem dinâmica da query analítica baseada em FinOps
         select_clauses = ["COUNT(*) AS _total_sampled_rows"]
@@ -84,11 +87,11 @@ def run_table_profiling(
             # Auxiliares para cálculo de Completude
             select_clauses.append(f"COUNT({escaped_col}) AS {field.name}__count_filled")
             
-            # Alternância algorítmica: COUNT(DISTINCT) Exato vs APPROX_COUNT_DISTINCT Econômico
+            # Alternância algorítmica injetando o alias correto correspondente
             if exact_distinct:
-                select_clauses.append(f"COUNT(DISTINCT {escaped_col}) AS {field.name}__approx_distinct")
+                select_clauses.append(f"COUNT(DISTINCT {escaped_col}) AS {field.name}{uniqueness_suffix}")
             else:
-                select_clauses.append(f"APPROX_COUNT_DISTINCT({escaped_col}) AS {field.name}__approx_distinct")
+                select_clauses.append(f"APPROX_COUNT_DISTINCT({escaped_col}) AS {field.name}{uniqueness_suffix}")
             
             # Habilita MIN/MAX para tipos textuais (STRING) e booleanos, além de numéricos/temporais
             if field.field_type in ["INTEGER", "FLOAT", "NUMERIC", "BIGNUMERIC", "INT64", "FLOAT64", "DATE", "DATETIME", "TIMESTAMP", "STRING", "BOOLEAN"]:
@@ -147,7 +150,7 @@ def run_table_profiling(
                 continue
                 
             count_filled = int(row.get(f"{field.name}__count_filled", 0))
-            approx_distinct = int(row.get(f"{field.name}__approx_distinct", 0))
+            approx_distinct = int(row.get(f"{field.name}{uniqueness_suffix}", 0))
             
             completeness = (count_filled / total_sampled_rows * 100) if total_sampled_rows > 0 else 0
             uniqueness = (approx_distinct / count_filled * 100) if count_filled > 0 else 0

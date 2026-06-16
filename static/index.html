@@ -265,7 +265,7 @@
                                             <th class="px-3 py-2">Nome da Coluna</th>
                                             <th class="px-2 py-2">Tipo Físico</th>
                                             <th v-if="profilingResult" class="px-2 py-2 text-right">Completude</th>
-                                            <th v-if="profilingResult" class="px-2 py-2 text-right">Unicidade (HLL)</th>
+                                            <th v-if="profilingResult" class="px-2 py-2 text-right">Unicidade {{ profileExactDistinct ? '(Exato)' : '(HLL)' }}</th>
                                             <th v-if="profilingResult" class="px-3 py-2">Valor Mínimo (MIN)</th>
                                             <th v-if="profilingResult" class="px-3 py-2">Valor Máximo (MAX)</th>
                                             <th class="px-3 py-2" v-else>Modo de Aceitação</th>
@@ -335,7 +335,7 @@
                 const costEstimation = ref(null);
                 const profilingResult = ref(null);
                 const activeQuery = ref('');
-                const profileExactDistinct = ref(false); // Estado para alternar entre aproximado (false) e exato (true)
+                const profileExactDistinct = ref(false);
 
                 const showToast = (msg) => { toast.value = msg; setTimeout(() => toast.value = null, 4000); };
                 const formatNumber = (num) => new Intl.NumberFormat('pt-BR').format(num || 0);
@@ -399,7 +399,7 @@
                     profilingResult.value = null;
                     activeQuery.value = '';
                     profileSamplePercent.value = 10;
-                    profileExactDistinct.value = false; // Garante o reset para a abordagem econômica
+                    profileExactDistinct.value = false;
                     profileDateColumn.value = '';
                     profileDaysLookback.value = null;
                     selectedTableMetadata.value = null;
