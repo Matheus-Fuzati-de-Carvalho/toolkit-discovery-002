@@ -203,8 +203,8 @@
                         <div class="md:col-span-2">
                             <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">MÉTODO UNICIDADE</label>
                             <select v-model="profileExactDistinct" @change="handleUniquenessMethodChange" class="w-full text-xs p-1.5 border border-gcp-border rounded bg-white font-mono font-bold" :class="profileExactDistinct ? 'text-purple-700 border-purple-300' : 'text-slate-700'">
-                                <option :value="false">Aproximado (Econômico)</option>
-                                <option :value="true">Exato (Rígido)</option>
+                                <option :value="false">APPROX</option>
+                                <option :value="true">COUNT(DISTINCT)</option>
                             </select>
                         </div>
 
