@@ -137,6 +137,7 @@
                                 <tr>
                                     <th @click="sortTables('table_id')" class="px-4 py-2.5 cursor-pointer hover:bg-gray-200 transition">Nome / ID {{ renderSortIcon('table_id') }}</th>
                                     <th @click="sortTables('table_type')" class="px-3 py-2.5 cursor-pointer hover:bg-gray-200 transition">Tipo {{ renderSortIcon('table_type') }}</th>
+                                    <th @click="sortTables('column_count')" class="px-3 py-2.5 text-right cursor-pointer hover:bg-gray-200 transition">Qtd de Colunas {{ renderSortIcon('column_count') }}</th>
                                     <th @click="sortTables('created_time')" class="px-3 py-2.5 cursor-pointer hover:bg-gray-200 transition">Data de Criação {{ renderSortIcon('created_time') }}</th>
                                     <th @click="sortTables('modified_time')" class="px-3 py-2.5 cursor-pointer hover:bg-gray-200 transition">Data e Hora de Atualização {{ renderSortIcon('modified_time') }}</th>
                                     <th @click="sortTables('row_count')" class="px-3 py-2.5 text-right cursor-pointer hover:bg-gray-200 transition">Qtd de Linhas {{ renderSortIcon('row_count') }}</th>
@@ -157,6 +158,9 @@
                                     <td class="px-3 py-2.5">
                                         <span class="text-[9px] px-1.5 py-0.5 rounded font-bold" :class="table.table_type === 'VIEW' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-700'">{{ table.table_type }}</span>
                                     </td>
+                                    <td class="px-3 py-2.5 text-right font-mono font-semibold text-slate-700">
+                                        {{ formatNumber(table.column_count) }}
+                                    </td>
                                     <td class="px-3 py-2.5 text-slate-500 font-mono">{{ table.created_time }}</td>
                                     <td class="px-3 py-2.5 text-slate-500 font-mono">{{ table.modified_time }}</td>
                                     <td class="px-3 py-2.5 text-right font-mono font-semibold" :class="table.row_count === 0 ? 'text-red-500' : 'text-slate-700'">{{ formatNumber(table.row_count) }}</td>
@@ -164,7 +168,7 @@
                                     <td class="px-4 py-2.5 text-center font-mono text-slate-500">{{ table.location }}</td>
                                 </tr>
                                 <tr v-if="filteredTables.length === 0">
-                                    <td colspan="7" class="text-center py-6 text-slate-400 bg-slate-50/50">Nenhuma tabela correspondente encontrada.</td>
+                                    <td colspan="8" class="text-center py-6 text-slate-400 bg-slate-50/50">Nenhuma tabela correspondente encontrada.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -375,7 +379,6 @@
                     }
                 };
 
-                // Interceptador de alteração do método de unicidade com mensagem simples e fundamentada
                 const handleUniquenessMethodChange = () => {
                     if (profileExactDistinct.value === true) {
                         const currentCost = costEstimation.value ? costEstimation.value.cost_usd.toFixed(6) : "0.000000";
@@ -391,7 +394,6 @@
                     }
                 };
 
-                // Orquestrador de Inicialização e Abertura do Modal de Schema (Custo Zero)
                 const openProfileModal = async (tableId) => {
                     isProfileModalOpen.value = true;
                     isMetadataLoading.value = true;
@@ -424,7 +426,6 @@
                     }
                 };
 
-                // Orquestrador de Execução Analítica (Ação FinOps Dry Run vs Run Efetivo)
                 const runProfilingAction = async (isDryRun) => {
                     if (!selectedTableMetadata.value) return;
                     isProfilingLoading.value = true;
