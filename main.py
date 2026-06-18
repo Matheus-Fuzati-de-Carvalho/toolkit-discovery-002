@@ -64,12 +64,16 @@ def run_table_profiling(
     dry_run: bool = True,
     sample_percent: Optional[float] = 100.0,
     date_column: Optional[str] = None,
-    days_lookback: Optional[int] = None
+    days_lookback: Optional[int] = None,
+    exact_distinct: bool = False
 ):
     try:
         table_ref = f"{PROJECT_ID}.{dataset_id}.{table_id}"
         table = bq_client.get_table(table_ref)
         is_view = table.table_type == "VIEW"
+        
+        # Define dinamicamente o sufixo do alias para não confundir o usuário engenheiro
+        uniqueness_suffix = "__exact_distinct" if exact_distinct else "__approx_distinct"
         
         # Início da montagem dinâmica da query analítica baseada em FinOps
         select_clauses = ["COUNT(*) AS _total_sampled_rows"]
@@ -82,10 +86,14 @@ def run_table_profiling(
             escaped_col = f"`{field.name}`"
             # Auxiliares para cálculo de Completude
             select_clauses.append(f"COUNT({escaped_col}) AS {field.name}__count_filled")
-            # Unicidade Econômica FinOps (HyperLogLog)
-            select_clauses.append(f"APPROX_COUNT_DISTINCT({escaped_col}) AS {field.name}__approx_distinct")
             
-            # Solução: Habilita MIN/MAX para tipos textuais (STRING) e booleanos, além de numéricos/temporais
+            # Alternância algorítmica injetando o alias correto correspondente
+            if exact_distinct:
+                select_clauses.append(f"COUNT(DISTINCT {escaped_col}) AS {field.name}{uniqueness_suffix}")
+            else:
+                select_clauses.append(f"APPROX_COUNT_DISTINCT({escaped_col}) AS {field.name}{uniqueness_suffix}")
+            
+            # Habilita MIN/MAX para tipos textuais (STRING) e booleanos, além de numéricos/temporais
             if field.field_type in ["INTEGER", "FLOAT", "NUMERIC", "BIGNUMERIC", "INT64", "FLOAT64", "DATE", "DATETIME", "TIMESTAMP", "STRING", "BOOLEAN"]:
                 select_clauses.append(f"MIN({escaped_col}) AS {field.name}__min")
                 select_clauses.append(f"MAX({escaped_col}) AS {field.name}__max")
@@ -142,7 +150,7 @@ def run_table_profiling(
                 continue
                 
             count_filled = int(row.get(f"{field.name}__count_filled", 0))
-            approx_distinct = int(row.get(f"{field.name}__approx_distinct", 0))
+            approx_distinct = int(row.get(f"{field.name}{uniqueness_suffix}", 0))
             
             completeness = (count_filled / total_sampled_rows * 100) if total_sampled_rows > 0 else 0
             uniqueness = (approx_distinct / count_filled * 100) if count_filled > 0 else 0
@@ -176,7 +184,7 @@ def run_table_profiling(
             "total_rows": table.num_rows,
             "sampled_rows": total_sampled_rows,
             "columns": columns_profiling,
-            "query_generated": query  # Solução: Expõe a query estruturada também no sucesso
+            "query_generated": query
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -188,21 +196,34 @@ def get_dataset_health(dataset_id: str):
         ds_ref = bq_client.get_dataset(dataset_id)
         location = ds_ref.location or "US"
 
+        # Solução FinOps: LEFT JOIN com INFORMATION_SCHEMA.COLUMNS para contagem gratuita de colunas
         query_metadata = f"""
-        SELECT
-            table_id,
-            row_count,
-            size_bytes,
-            CASE 
-                WHEN type = 1 THEN 'TABLE' 
-                WHEN type = 2 THEN 'VIEW' 
-                ELSE 'EXTERNAL' 
-            END as table_type,
-            TIMESTAMP_MILLIS(creation_time) as created_time,
-            TIMESTAMP_MILLIS(last_modified_time) as modified_time,
-            TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), TIMESTAMP_MILLIS(last_modified_time), HOUR) as freshness_hours
-        FROM `{PROJECT_ID}.{dataset_id}.__TABLES__`
-        ORDER BY table_id ASC
+        WITH table_base AS (
+            SELECT
+                table_id,
+                row_count,
+                size_bytes,
+                CASE 
+                    WHEN type = 1 THEN 'TABLE' 
+                    WHEN type = 2 THEN 'VIEW' 
+                    ELSE 'EXTERNAL' 
+                END as table_type,
+                TIMESTAMP_MILLIS(creation_time) as created_time,
+                TIMESTAMP_MILLIS(last_modified_time) as modified_time,
+                TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), TIMESTAMP_MILLIS(last_modified_time), HOUR) as freshness_hours
+            FROM `{PROJECT_ID}.{dataset_id}.__TABLES__`
+        ),
+        col_counts AS (
+            SELECT table_name, COUNT(1) AS column_count
+            FROM `{PROJECT_ID}.{dataset_id}.INFORMATION_SCHEMA.COLUMNS`
+            GROUP BY table_name
+        )
+        SELECT 
+            t.*,
+            COALESCE(c.column_count, 0) AS column_count
+        FROM table_base t
+        LEFT JOIN col_counts c ON t.table_id = c.table_name
+        ORDER BY t.table_id ASC
         """
         df = bq_client.query(query_metadata).to_dataframe()
         
@@ -217,10 +238,8 @@ def get_dataset_health(dataset_id: str):
                 "tables_detailed": []
             }
 
-        # Injeta a região em cada linha da tabela para exibição no grid
         df['location'] = location
 
-        # Identificação de Linhagem Temporal (Mais antigas e mais recentes)
         oldest_created_row = df.loc[df['created_time'].idxmin()] if not df['created_time'].isnull().all() else None
         newest_created_row = df.loc[df['created_time'].idxmax()] if not df['created_time'].isnull().all() else None
         oldest_modified_row = df.loc[df['modified_time'].idxmin()] if not df['modified_time'].isnull().all() else None
@@ -230,7 +249,6 @@ def get_dataset_health(dataset_id: str):
             if row is None or pd.isna(row[time_col]): return "-"
             return f"{row['table_id']} ({row[time_col].strftime('%Y-%m-%d %H:%M:%S')})"
 
-        # Formatação das strings de data para o JSON final
         df['created_time'] = df['created_time'].dt.strftime('%Y-%m-%d %H:%M:%S')
         df['modified_time'] = df['modified_time'].dt.strftime('%Y-%m-%d %H:%M:%S')
         df = df.where(pd.notnull(df), None)
@@ -247,7 +265,6 @@ def get_dataset_health(dataset_id: str):
                 "newest_created": format_kpi_string(newest_created_row, 'created_time'),
                 "oldest_modified": format_kpi_string(oldest_modified_row, 'modified_time'),
                 "newest_modified": format_kpi_string(newest_modified_row, 'modified_time'),
-                # Janelas temporais solicitadas
                 "h12": int((df["freshness_hours"] <= 12).sum()),
                 "h24": int(((df["freshness_hours"] > 12) & (df["freshness_hours"] <= 24)).sum()),
                 "h48": int(((df["freshness_hours"] > 24) & (df["freshness_hours"] <= 48)).sum()),

@@ -1,4 +1,4 @@
-name: Continuous Deployment (Multi-Ambiente)
+name: Deploy para Cloud Run (Dev/Hom)
 
 # 🎯 O gatilho agora é automático por branch, eliminando o formulário manual causador de erros
 on:
