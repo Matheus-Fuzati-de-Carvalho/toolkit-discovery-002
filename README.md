@@ -1,50 +1,66 @@
 # 📊 Hub de Observabilidade e Profiling de Dados (BigQuery)
 
-Este projeto consiste em um **Hub de Observabilidade** conteinerizado, desenvolvido para atuar como uma plataforma central de inteligência, auditoria e análise estrutural de dados contidos no **Google BigQuery (BQ)**. 
-
-O Hub foi desenhado para dar visibilidade completa sobre o ecossistema de dados, ajudando times de engenharia e governança a entender a saúde, o volume e a composição das tabelas corporativas.
+Plataforma desenvolvida para o **Google Cloud Run** com foco em **FinOps, governança e qualidade de dados**. O Hub atua como uma camada central para monitorar a saúde, a volumetria e os custos ocultos do Google BigQuery (BQ), utilizando metadados nativos com custo zero e algoritmos probabilísticos avançados.
 
 ---
 
-## ⚙️ Como o Hub Funciona
+## ⚙️ Funcionalidades Principais
 
-O aplicativo opera realizando uma varredura analítica diretamente nas APIs do Google Cloud, estruturado em três camadas principais de funcionamento:
-
-### 1. Conexão Nativa com o BigQuery
-O Hub utiliza as bibliotecas oficiais do Google Cloud para se conectar de forma segura ao ambiente do BigQuery do projeto alvo. Ele herda as permissões da conta de execução para listar e interagir com os recursos de dados sem a necessidade de expor credenciais no código.
-
-### 2. Catálogo e Informações Vitais de Tabelas
-A aplicação varre os **Datasets** ativos e mapeia dinamicamente todas as tabelas existentes, extraindo e exibindo suas métricas vitais de infraestrutura em uma interface centralizada:
-* Tamanho total da tabela em disco (Bytes/Gigabytes).
-* Quantidade exata de linhas (*Row Count*).
-* Data de criação e horário da última modificação/atualização dos dados.
-* Tipo da tabela (Tabela nativa, Visão ou Tabela Externa).
-
-### 3. Profiling Detalhado Coluna a Coluna ⚠️ *(Em Desenvolvimento)*
-Uma camada avançada de qualidade de dados que realiza uma autópsia estatística na estrutura interna das tabelas. Quando finalizada, esta funcionalidade gerará um relatório detalhado analisando cada coluna individualmente:
-* Identificação de tipos de dados e inferência de esquemas.
-* Volumetria de valores nulos (*Null Share*) e preenchimento.
-* Análise de cardinalidade (valores únicos) e detecção de possíveis chaves primárias.
-* Distribuição estatística para campos numéricos e padrões de texto.
+* **Catálogo Dinâmico (Custo Zero):** Autodescoberta de datasets, tabelas (nativas/externas) e views. Exibe a região geográfica, tamanho em disco (Bytes/TB), contagem exata de linhas e monitoramento de *Freshness* (SLAs de atualização em janelas de 12h, 24h, 48h ou obsoletas).
+* **Profiling Avançado (FinOps Guard):** Análise estatística coluna a coluna para validar preenchimento (*Null Share*) e cardinalidade (valores únicos). Conta com o mecanismo de *Dry Run*, que calcula os bytes escaneados e o custo estimado em USD antes da execução da consulta, além de suporte a amostragem (*TABLESAMPLE*) e filtros temporais.
+* **Interseção Probabilística (HLL):** Identifica a sobreposição de registros comuns entre tabelas massivas utilizando algoritmos *HyperLogLog* (`HLL_COUNT.INIT` e `HLL_COUNT.MERGE`). Substitui `INNER JOINs` pesados por um processamento leve em memória, reduzindo o custo computacional e financeiro a quase zero.
 
 ---
 
 ## 🛠️ Stack Tecnológica
 
-* **Linguagem/Runtime:** Python (com bibliotecas `google-cloud-bigquery` e motores de análise estatística).
-* **Containers:** Docker (Padronização do ambiente de execução).
-* **Hospedagem:** Google Cloud Run (Infraestrutura serverless com auto-scaling).
+* **Backend / API:** Python 3.11, FastAPI, Uvicorn, Pandas e Google Cloud BigQuery Client Core.
+* **Frontend:** Vue.js 3 e TailwindCSS (Arquitetura de Componentes).
+* **Infraestrutura:** Docker, Terraform e GitHub Actions (Esteira de CI/CD).
 
 ---
 
-## 🚀 Como é Feito o Deploy em um Novo Projeto
+## 📋 Pré-requisitos para o Time de TI (GCP)
 
-Para garantir que este Hub de Observabilidade seja agnóstico e possa ser implantado instantaneamente em qualquer novo projeto da empresa, todo o ciclo de vida da infraestrutura é controlado por uma esteira automatizada de **Terraform** e **GitHub Actions**.
+Solicite à equipe de infraestrutura e segurança do Google Cloud Platform as seguintes configurações no projeto alvo:
 
-O processo de deploy em um novo ambiente do GCP ocorre em poucos passos:
+1.  **Ativação de APIs Nativas:**
+    * `run.googleapis.com` (Cloud Run)
+    * `artifactregistry.googleapis.com` (Artifact Registry)
+    * `bigquery.googleapis.com` (BigQuery Engine)
+    * `iam.googleapis.com` (Identity and Access Management)
+2.  **Autenticação via Workload Identity Federation (WIF):** Criação de um pool de identidade vinculado ao repositório do GitHub para permitir deploys automáticos e seguros, eliminando o uso de chaves JSON privadas.
+3.  **Permissões da Service Account de Execução (Runtime IAM):**
+    * `roles/bigquery.metadataViewer` (Leitura gratuita do catálogo de metadados).
+    * `roles/bigquery.user` (Permissão para executar Jobs e consultas de profiling/HLL).
+    * `roles/bigquery.dataViewer` (Visualização de schemas e amostras estatísticas).
 
-1. **Preparação no GCP:** O administrador do novo projeto ativa as APIs necessárias (`run`, `artifactregistry`, `bigquery`) e cria uma relação de confiança segura via **Workload Identity Federation (WIF)**, permitindo que o GitHub se conecte ao GCP sem chaves JSON fixas.
-2. **Disparo Manual (Formulário):** Na aba *Actions* do GitHub, o operador aciona o fluxo informando apenas o ID do novo projeto, o número do projeto e a região desejada.
-3. **Orquestração Automatizada:** * O **Terraform** entra em ação para criar o repositório seguro no *Artifact Registry*.
-   * O **GitHub Actions** constrói a imagem Docker do Hub de Observabilidade e faz o `push` para esse repositório.
-   * O **Terraform** finaliza o processo criando o serviço no *Cloud Run* apontando para a nova imagem e aplicando a política de IAM que libera o acesso público seguro à interface do Hub.
+---
+
+## 🚀 Passo a Passo para o Deploy
+
+### Passo 1: Ajustar Variáveis de Infraestrutura
+
+Abra o arquivo `toolkit-discovery-002/variables.tf` no seu ambiente de desenvolvimento e configure os valores padrão com os dados fornecidos pelo time de TI:
+  
+    variable "project_id" {
+    type        = string
+    description = "O ID do projeto alvo no Google Cloud fornecido pela TI"
+    default     = "seu-projeto-gcp-aqui"
+    }
+  
+    variable "region" {
+    type        = string
+    description = "A região onde a infraestrutura será criada"
+    default     = "us-central1"
+    }
+
+
+Passo 2: Executar via GitHub Actions (Esteira Automatizada)
+Vá até o repositório do projeto no GitHub.
+
+ * Acesse a aba Actions e selecione o workflow Deploy Hub Observabilidade.
+
+  * Clique no botão Run workflow, insira o ID do projeto GCP correspondente e confirme o disparo.
+
+  💡 O que a automação fará: O Terraform provisionará o repositório privado no Artifact Registry, compilará a imagem Docker da aplicação, realizará o push e publicará o serviço escalável no Cloud Run com uma URL pública protegida por certificado SSL automático da Google.
