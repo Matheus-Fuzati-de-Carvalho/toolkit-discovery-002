@@ -137,6 +137,7 @@
                                 <tr>
                                     <th @click="sortTables('table_id')" class="px-4 py-2.5 cursor-pointer hover:bg-gray-200 transition">Nome / ID {{ renderSortIcon('table_id') }}</th>
                                     <th @click="sortTables('table_type')" class="px-3 py-2.5 cursor-pointer hover:bg-gray-200 transition">Tipo {{ renderSortIcon('table_type') }}</th>
+                                    <th @click="sortTables('column_count')" class="px-3 py-2.5 text-right cursor-pointer hover:bg-gray-200 transition">Qtd de Colunas {{ renderSortIcon('column_count') }}</th>
                                     <th @click="sortTables('created_time')" class="px-3 py-2.5 cursor-pointer hover:bg-gray-200 transition">Data de Criação {{ renderSortIcon('created_time') }}</th>
                                     <th @click="sortTables('modified_time')" class="px-3 py-2.5 cursor-pointer hover:bg-gray-200 transition">Data e Hora de Atualização {{ renderSortIcon('modified_time') }}</th>
                                     <th @click="sortTables('row_count')" class="px-3 py-2.5 text-right cursor-pointer hover:bg-gray-200 transition">Qtd de Linhas {{ renderSortIcon('row_count') }}</th>
@@ -146,11 +147,19 @@
                             </thead>
                             <tbody class="divide-y divide-gray-100">
                                 <tr v-for="table in filteredTables" :key="table.table_id" class="hover:bg-slate-50 transition-colors">
-                                    <td class="px-4 py-2.5 font-bold text-gcp-dark font-mono flex items-center gap-1.5">
-                                        <span>{{ table.table_type === 'VIEW' ? '👁️' : '📄' }}</span> {{ table.table_id }}
+                                    <td class="px-4 py-2.5 font-bold text-gcp-dark font-mono flex items-center justify-between gap-2">
+                                        <div class="flex items-center gap-1.5">
+                                            <span>{{ table.table_type === 'VIEW' ? '👁️' : '📄' }}</span> {{ table.table_id }}
+                                        </div>
+                                        <button @click="openProfileModal(table.table_id)" class="bg-gcp-lightBlue text-gcp-blue border border-gcp-border hover:bg-gcp-blue hover:text-white px-2 py-0.5 rounded text-[10px] font-bold transition-all shadow-sm">
+                                            🔍 Analisar
+                                        </button>
                                     </td>
                                     <td class="px-3 py-2.5">
                                         <span class="text-[9px] px-1.5 py-0.5 rounded font-bold" :class="table.table_type === 'VIEW' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-700'">{{ table.table_type }}</span>
+                                    </td>
+                                    <td class="px-3 py-2.5 text-right font-mono font-semibold text-slate-700">
+                                        {{ formatNumber(table.column_count) }}
                                     </td>
                                     <td class="px-3 py-2.5 text-slate-500 font-mono">{{ table.created_time }}</td>
                                     <td class="px-3 py-2.5 text-slate-500 font-mono">{{ table.modified_time }}</td>
@@ -159,10 +168,144 @@
                                     <td class="px-4 py-2.5 text-center font-mono text-slate-500">{{ table.location }}</td>
                                 </tr>
                                 <tr v-if="filteredTables.length === 0">
-                                    <td colspan="7" class="text-center py-6 text-slate-400 bg-slate-50/50">Nenhuma tabela correspondente encontrada.</td>
+                                    <td colspan="8" class="text-center py-6 text-slate-400 bg-slate-50/50">Nenhuma tabela correspondente encontrada.</td>
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="isProfileModalOpen" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                <div class="bg-white rounded-lg shadow-xl border border-gcp-border w-full max-w-5xl max-h-[85vh] flex flex-col overflow-hidden">
+                    
+                    <div class="p-4 bg-slate-50 border-b border-gcp-border flex justify-between items-center">
+                        <div>
+                            <span class="text-[9px] bg-gcp-blue text-white font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">Módulo de Qualidade</span>
+                            <h3 class="text-sm font-bold text-gcp-dark mt-1 font-mono">Tabela: {{ selectedTableMetadata?.table_id }}</h3>
+                        </div>
+                        <button @click="isProfileModalOpen = false" class="text-slate-400 hover:text-slate-700 font-bold text-sm">✕</button>
+                    </div>
+
+                    <div v-if="selectedTableMetadata?.table_type === 'VIEW'" class="bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-amber-900 flex items-center gap-2">
+                        <span class="text-sm">⚠️</span>
+                        <p class="text-[11px] font-medium">
+                            <strong>Esta tabela é uma VIEW lógica.</strong> O recurso <code>TABLESAMPLE SYSTEM</code> foi desativado automaticamente. A execução processará a View por completo, a menos que uma janela restrita de data seja configurada abaixo. <strong>Cuidado com o custo operacional!</strong>
+                        </p>
+                    </div>
+
+                    <div class="p-4 bg-slate-50/50 border-b border-gcp-border grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                        <div class="md:col-span-2">
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Amostragem (%)</label>
+                            <input type="number" v-model="profileSamplePercent" :disabled="selectedTableMetadata?.table_type === 'VIEW'" min="1" max="100" class="w-full text-xs p-1.5 border border-gcp-border rounded bg-white disabled:bg-slate-100 disabled:text-slate-400 font-mono">
+                        </div>
+                        
+                        <div class="md:col-span-2">
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">MÉTODO UNICIDADE</label>
+                            <select v-model="profileExactDistinct" @change="handleUniquenessMethodChange" class="w-full text-xs p-1.5 border border-gcp-border rounded bg-white font-mono font-bold" :class="profileExactDistinct ? 'text-purple-700 border-purple-300' : 'text-slate-700'">
+                                <option :value="false">APPROX</option>
+                                <option :value="true">COUNT(DISTINCT)</option>
+                            </select>
+                        </div>
+
+                        <div class="md:col-span-2">
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Coluna de Data</label>
+                            <select v-model="profileDateColumn" class="w-full text-xs p-1.5 border border-gcp-border rounded bg-white font-mono">
+                                <option value="">-- Sem filtro temporal --</option>
+                                <option v-for="col in selectedTableMetadata?.date_columns" :key="col" :value="col">{{ col }}</option>
+                            </select>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Janela (D-X Dias)</label>
+                            <input type="number" v-model="profileDaysLookback" :disabled="!profileDateColumn" placeholder="Ex: 7" class="w-full text-xs p-1.5 border border-gcp-border rounded bg-white disabled:bg-slate-100 font-mono">
+                        </div>
+                        <div class="md:col-span-4 flex gap-2">
+                            <button @click="runProfilingAction(true)" :disabled="isProfilingLoading || isMetadataLoading" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-1.5 px-2 rounded text-xs transition disabled:opacity-50">
+                                🧮 Estimar Custo
+                            </button>
+                            <button @click="runProfilingAction(false)" :disabled="isProfilingLoading || isMetadataLoading" class="flex-1 bg-gcp-blue hover:bg-blue-700 text-white font-bold py-1.5 px-2 rounded text-xs transition disabled:opacity-50">
+                                🚀 Executar Profile
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="flex-1 overflow-y-auto p-4 space-y-4">
+                        <div v-if="isMetadataLoading || isProfilingLoading" class="text-center py-12 text-gcp-blue font-medium animate-pulse text-xs">
+                            Processando comunicação e regras analíticas no Google BigQuery...
+                        </div>
+                        
+                        <template v-else>
+                            <div v-if="costEstimation" class="bg-blue-50 border border-blue-100 p-3 rounded-lg grid grid-cols-2 gap-4">
+                                <div>
+                                    <span class="text-[9px] text-slate-400 font-bold uppercase block">Volume Estimado de Varredura</span>
+                                    <span class="font-mono text-sm font-black text-gcp-blue">{{ formatBytes(costEstimation.bytes_scanned) }}</span>
+                                </div>
+                                <div>
+                                    <span class="text-[9px] text-slate-400 font-bold uppercase block">Custo Estimado da Consulta (USD)</span>
+                                    <span class="font-mono text-sm font-black text-emerald-600">
+                                        $ {{ costEstimation.cost_usd === 0 ? '0.00 (Cache)' : costEstimation.cost_usd.toFixed(6) }}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div v-if="activeQuery" class="bg-slate-900 rounded-lg overflow-hidden border border-slate-800 shadow-sm">
+                                <div class="px-3 py-1.5 bg-slate-800 text-slate-300 font-bold text-[9px] flex justify-between items-center select-none uppercase tracking-wider">
+                                    <span>🔮 SQL Query Real Executada (Mecanismo de Auditoria FinOps)</span>
+                                    <button @click="copyQueryToClipboard" class="text-gcp-lightBlue hover:text-white transition text-[9px] font-bold">
+                                        📋 Copiar SQL
+                                    </button>
+                                </div>
+                                <pre class="p-3 text-emerald-400 font-mono text-[10px] overflow-x-auto max-h-40 whitespace-pre-wrap leading-relaxed select-all bg-slate-950">{{ activeQuery }}</pre>
+                            </div>
+
+                            <div v-if="profilingResult" class="bg-slate-50 p-2 rounded border border-dashed text-[10px] text-slate-500 font-mono flex gap-4">
+                                <div><strong>Registros na Amostra:</strong> {{ formatNumber(profilingResult.sampled_rows) }} / {{ formatNumber(profilingResult.total_rows) }}</div>
+                            </div>
+
+                            <div class="overflow-x-auto border border-gcp-border rounded-lg">
+                                <table class="w-full text-left text-xs whitespace-nowrap">
+                                    <thead class="bg-gcp-gray text-slate-500 font-bold border-b border-gcp-border uppercase text-[9px]">
+                                        <tr>
+                                            <th class="px-3 py-2">Nome da Coluna</th>
+                                            <th class="px-2 py-2">Tipo Físico</th>
+                                            <th v-if="profilingResult" class="px-2 py-2 text-right">Completude</th>
+                                            <th v-if="profilingResult" class="px-2 py-2 text-right">Unicidade {{ profileExactDistinct ? '(Exato)' : '(HLL)' }}</th>
+                                            <th v-if="profilingResult" class="px-3 py-2">Valor Mínimo (MIN)</th>
+                                            <th v-if="profilingResult" class="px-3 py-2">Valor Máximo (MAX)</th>
+                                            <th class="px-3 py-2" v-else>Modo de Aceitação</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-100 font-mono text-[11px]">
+                                        <tr v-for="col in (profilingResult ? profilingResult.columns : selectedTableMetadata?.schema)" :key="col.name" class="hover:bg-slate-50 transition-colors">
+                                            <td class="px-3 py-2 font-bold text-gcp-dark">{{ col.name }}</td>
+                                            <td class="px-2 py-2"><span class="bg-gray-100 text-slate-600 px-1 py-0.5 rounded text-[10px]">{{ col.type }}</span></td>
+                                            
+                                            <template v-if="profilingResult">
+                                                <template v-if="col.status === 'profiled'">
+                                                    <td class="px-2 py-2 text-right font-semibold" :class="col.completeness_percent < 80 ? 'text-orange-600' : 'text-slate-700'">
+                                                        {{ col.completeness_percent }}%
+                                                    </td>
+                                                    <td class="px-2 py-2 text-right text-purple-700 font-semibold">
+                                                        {{ col.uniqueness_percent }}% <span class="text-[9px] text-slate-400">({{ formatNumber(col.approx_distinct_count) }} u)</span>
+                                                    </td>
+                                                    <td class="px-3 py-2 text-slate-500 truncate max-w-xs" :title="col.min">{{ col.min ?? '-' }}</td>
+                                                    <td class="px-3 py-2 text-slate-500 truncate max-w-xs" :title="col.max">{{ col.max ?? '-' }}</td>
+                                                </template>
+                                                <template v-else>
+                                                    <td colspan="4" class="px-3 py-2 text-center text-amber-600 bg-amber-50/20 font-medium text-[10px]">
+                                                        Tipo estruturado não elegível para profiling plano.
+                                                    </td>
+                                                </template>
+                                            </template>
+                                            
+                                            <template v-else>
+                                                <td class="px-3 py-2 text-slate-400 italic">{{ col.mode }}</td>
+                                            </template>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </template>
                     </div>
                 </div>
             </div>
@@ -184,6 +327,19 @@
                 const tableSortKey = ref('table_id');
                 const tableSortOrder = ref('asc');
                 const toast = ref(null);
+
+                // Variáveis de estado reativas do Módulo de Qualidade FinOps
+                const isProfileModalOpen = ref(false);
+                const selectedTableMetadata = ref(null);
+                const profileSamplePercent = ref(10);
+                const profileDateColumn = ref('');
+                const profileDaysLookback = ref(null);
+                const isMetadataLoading = ref(false);
+                const isProfilingLoading = ref(false);
+                const costEstimation = ref(null);
+                const profilingResult = ref(null);
+                const activeQuery = ref('');
+                const profileExactDistinct = ref(false);
 
                 const showToast = (msg) => { toast.value = msg; setTimeout(() => toast.value = null, 4000); };
                 const formatNumber = (num) => new Intl.NumberFormat('pt-BR').format(num || 0);
@@ -223,6 +379,95 @@
                     }
                 };
 
+                const handleUniquenessMethodChange = () => {
+                    if (profileExactDistinct.value === true) {
+                        const currentCost = costEstimation.value ? costEstimation.value.cost_usd.toFixed(6) : "0.000000";
+                        
+                        const msg = `Confirmação de Precisão:\n\n` +
+                                    `Mudar para o modo Exato aumentará em média 1% a precisão dos dados (eliminando a margem de variação estatística natural <1% da engine APPROX do BigQuery).\n\n` +
+                                    `A varredura de dados custará os mesmos $ ${currentCost}, porém consumirá significativamente mais recursos de CPU (Slots) da nuvem.\n\n` +
+                                    `Deseja aplicar a mudança?`;
+                                    
+                        if (!confirm(msg)) {
+                            profileExactDistinct.value = false;
+                        }
+                    }
+                };
+
+                const openProfileModal = async (tableId) => {
+                    isProfileModalOpen.value = true;
+                    isMetadataLoading.value = true;
+                    costEstimation.value = null;
+                    profilingResult.value = null;
+                    activeQuery.value = '';
+                    profileSamplePercent.value = 10;
+                    profileExactDistinct.value = false;
+                    profileDateColumn.value = '';
+                    profileDaysLookback.value = null;
+                    selectedTableMetadata.value = null;
+                    
+                    try {
+                        const res = await fetch(`/api/table-metadata/${activeDataset.value}/${tableId}`);
+                        if (!res.ok) {
+                            const errData = await res.json();
+                            throw new Error(errData.detail || "Erro na captura estrutural do schema técnico.");
+                        }
+                        const data = await res.json();
+                        selectedTableMetadata.value = data;
+                        
+                        if (data.table_type === 'VIEW') {
+                            profileSamplePercent.value = 100;
+                        }
+                    } catch (e) {
+                        showToast("Falha na varredura inicial: " + e.message);
+                        isProfileModalOpen.value = false;
+                    } finally {
+                        isMetadataLoading.value = false;
+                    }
+                };
+
+                const runProfilingAction = async (isDryRun) => {
+                    if (!selectedTableMetadata.value) return;
+                    isProfilingLoading.value = true;
+                    
+                    if (isDryRun) costEstimation.value = null;
+                    else profilingResult.value = null;
+                    
+                    try {
+                        let url = `/api/table-profiling-run/${activeDataset.value}/${selectedTableMetadata.value.table_id}?dry_run=${isDryRun}&sample_percent=${profileSamplePercent.value}&exact_distinct=${profileExactDistinct.value}`;
+                        
+                        if (profileDateColumn.value && profileDaysLookback.value !== null) {
+                            url += `&date_column=${profileDateColumn.value}&days_lookback=${profileDaysLookback.value}`;
+                        }
+                        
+                        const res = await fetch(url);
+                        if (!res.ok) {
+                            const err = await res.json();
+                            throw new Error(err.detail || "Falha na query interna do BigQuery.");
+                        }
+                        
+                        const data = await res.json();
+                        activeQuery.value = data.query_generated || '';
+                        
+                        if (isDryRun) {
+                            costEstimation.value = data;
+                        } else {
+                            profilingResult.value = data;
+                        }
+                    } catch (e) {
+                        showToast("Erro na operação: " + e.message);
+                    } finally {
+                        isProfilingLoading.value = false;
+                    }
+                };
+
+                const copyQueryToClipboard = () => {
+                    if (!activeQuery.value) return;
+                    navigator.clipboard.writeText(activeQuery.value)
+                        .then(() => showToast("Query SQL copiada para a área de transferência!"))
+                        .catch(() => showToast("Falha ao copiar automaticamente."));
+                };
+
                 const sortTables = (key) => {
                     if (tableSortKey.value === key) {
                         tableSortOrder.value = tableSortOrder.value === 'asc' ? 'desc' : 'asc';
@@ -241,13 +486,11 @@
                     if (!datasetHealth.value?.tables_detailed) return [];
                     let result = [...datasetHealth.value.tables_detailed];
                     
-                    // Mecanismo de busca / filtro por ID
                     if (tableSearch.value && tableSearch.value.trim()) {
                         const searchStr = tableSearch.value.toLowerCase();
                         result = result.filter(t => t.table_id.toLowerCase().includes(searchStr));
                     }
 
-                    // Mecanismo de ordenação dinâmica das colunas
                     const key = tableSortKey.value;
                     const order = tableSortOrder.value === 'asc' ? 1 : -1;
                     
@@ -274,7 +517,11 @@
                 return {
                     datasets, activeDataset, activeView, datasetHealth, isLoadingHealth, tableSearch,
                     tableSortKey, tableSortOrder, toast, formatNumber, formatBytes, loadDatasetHealth,
-                    sortTables, renderSortIcon, filteredTables: computedFilteredTables
+                    sortTables, renderSortIcon, filteredTables: computedFilteredTables,
+                    isProfileModalOpen, selectedTableMetadata, profileSamplePercent, profileDateColumn,
+                    profileDaysLookback, isMetadataLoading, isProfilingLoading, costEstimation,
+                    profilingResult, activeQuery, profileExactDistinct, openProfileModal, runProfilingAction, 
+                    copyQueryToClipboard, handleUniquenessMethodChange
                 }
             }
         }).mount('#app')

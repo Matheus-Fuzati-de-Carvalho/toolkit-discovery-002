@@ -1,4 +1,4 @@
-name: Continuous Deployment (Multi-Ambiente)
+name: Deploy para Cloud Run (Dev/Hom)
 
 # 🎯 O gatilho agora é automático por branch, eliminando o formulário manual causador de erros
 on:
@@ -25,6 +25,7 @@ env:
   TF_VAR_region: us-central1
   TF_VAR_app_name: ${{ github.ref_name == 'hom' && 'hub-observabilidade-hom' || 'hub-observabilidade-dev' }}
   TF_VAR_artifact_registry_repo: ${{ github.ref_name == 'hom' && 'hub-observabilidade-hom' || 'hub-observabilidade-dev' }}
+  TF_VAR_git_sha: ${{ github.sha }}
 
 jobs:
   deploy:

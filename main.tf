@@ -32,8 +32,19 @@ resource "google_cloud_run_v2_service" "app" {
       ports {
         container_port = 8080
       }
+      env {
+        name  = "GIT_SHA"
+        value = var.git_sha
+      }
     }
   }
+}
+
+# 1. Declare a nova variável no seu main.tf
+variable "git_sha" {
+  type        = string
+  description = "Hash do commit para forçar o deploy"
+  default     = "local"
 }
 
 # 🔓 Libera o acesso público (não autenticado) para qualquer pessoa na internet
