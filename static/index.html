@@ -4,171 +4,223 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Catálogo de Dados - Sumário de Datasets</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
             theme: { 
                 extend: { 
                     colors: { 
-                        gcp: { blue: '#1a73e8', gray: '#f8f9fa', border: '#dadce0', text: '#3c4043', dark: '#202124', lightBlue: '#e8f0fe' }
-                    } 
+                        // Mapeamento premium e minimalista estilo DP6 preservando nomes de classes originais
+                        gcp: { 
+                            blue: '#000000', // Contraste absoluto para botões primários e marcas de destaque
+                            gray: '#f8fafc', 
+                            border: '#e2e8f0', 
+                            text: '#475569', 
+                            dark: '#0f172a', 
+                            lightBlue: '#f1f5f9' 
+                        },
+                        brand: {
+                            accent: '#eb3232', // Crimson sutil clássico de martech/analytics
+                            surface: '#ffffff',
+                            bg: '#f8fafc',
+                            muted: '#64748b'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace']
+                    }
                 } 
             }
         }
     </script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <style>
-        body { @apply bg-slate-50 text-slate-700 font-sans; overflow-x: hidden; }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #f1f3f4; }
-        ::-webkit-scrollbar-thumb { background: #c1c4c6; border-radius: 3px; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; @apply bg-slate-50 text-slate-600 antialiased; overflow-x: hidden; }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         [v-cloak] { display: none; }
+        
+        .animate-fade-in { animation: fadeIn 0.25s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
-<body class="flex h-screen overflow-hidden text-xs">
+<body class="flex h-screen overflow-hidden text-xs selection:bg-slate-900 selection:text-white">
     <div id="app" class="flex w-full h-full" v-cloak>
         
-        <div v-if="toast" class="fixed top-5 right-5 bg-red-50 border-l-4 border-red-500 text-red-900 px-4 py-3 rounded shadow-lg z-50 flex items-center justify-between gap-3">
-            <span class="font-medium">⚠️ {{ toast }}</span>
-            <button @click="toast = null" class="text-red-400 hover:text-red-900 font-bold">✕</button>
+        <div v-if="toast" class="fixed top-6 right-6 bg-white border border-rose-100 text-slate-900 px-4 py-3.5 rounded-xl shadow-xl z-50 flex items-center justify-between gap-4 max-w-md animate-fade-in">
+            <div class="flex items-center gap-2.5">
+                <span class="flex h-2 w-2 rounded-full bg-brand-accent animate-pulse"></span>
+                <span class="font-semibold tracking-tight text-[11px]">⚠️ {{ toast }}</span>
+            </div>
+            <button @click="toast = null" class="text-slate-400 hover:text-slate-900 transition-colors font-medium text-xs px-1">✕</button>
         </div>
 
-        <aside class="w-64 bg-white border-r border-gcp-border flex flex-col h-full shrink-0 shadow-sm">
-            <div class="p-4 border-b border-gcp-border bg-slate-50 flex items-center gap-2">
-                <div class="w-3 h-3 bg-gcp-blue rounded-sm"></div>
-                <h1 class="text-xs font-bold text-gcp-dark tracking-tight">Catálogo BigQuery</h1>
+        <aside class="w-72 bg-white border-r border-slate-200/80 flex flex-col h-full shrink-0 shadow-[1px_0_10px_rgba(0,0,0,0.01)] relative z-20">
+            <div class="p-6 border-b border-slate-100 flex items-center gap-3">
+                <div class="h-6 w-1.5 bg-brand-accent rounded-full"></div>
+                <h1 class="text-xs font-extrabold text-slate-900 tracking-wider uppercase">Catálogo BigQuery</h1>
             </div>
-            <div class="overflow-y-auto p-3 space-y-1.5 flex-1 bg-gcp-gray/30">
-                <div class="text-[10px] font-bold text-slate-400 uppercase px-2 tracking-wider mb-1">Datasets Disponíveis</div>
-                <div v-for="ds in datasets" :key="ds.dataset_id">
-                    <button @click="loadDatasetHealth(ds.dataset_id)" :class="['w-full text-left px-2 py-1.5 rounded text-xs border transition-all', activeDataset === ds.dataset_id ? 'bg-white border-gcp-border text-gcp-dark font-bold shadow-sm' : 'bg-transparent border-transparent text-slate-600 hover:bg-gray-100']">
-                        <span class="truncate block">🗄️ {{ ds.dataset_id }}</span>
-                    </button>
+            
+            <div class="overflow-y-auto p-4 space-y-4 flex-1 bg-slate-50/40">
+                <div>
+                    <div class="text-[9px] font-bold text-slate-400 uppercase px-3 tracking-widest mb-2.5">Datasets Disponíveis</div>
+                    <div class="space-y-1">
+                        <div v-for="ds in datasets" :key="ds.dataset_id">
+                            <button @click="loadDatasetHealth(ds.dataset_id)" 
+                                :class="['w-full text-left px-3 py-2.5 rounded-xl text-xs border transition-all duration-200 flex items-center gap-2.5 group relative', 
+                                activeDataset === ds.dataset_id 
+                                ? 'bg-slate-900 border-slate-900 text-white font-semibold shadow-md shadow-slate-900/10' 
+                                : 'bg-transparent border-transparent text-slate-600 hover:bg-slate-100/80 hover:text-slate-900']">
+                                <span class="text-sm transition-transform group-hover:scale-110">🗄️</span>
+                                <span class="truncate block flex-1 tracking-tight">{{ ds.dataset_id }}</span>
+                                <span v-if="activeDataset === ds.dataset_id" class="absolute right-3 w-1.5 h-1.5 rounded-full bg-brand-accent"></span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </aside>
 
-        <main class="flex-1 flex flex-col h-full overflow-y-auto relative p-6">
+        <main class="flex-1 flex flex-col h-full overflow-y-auto relative bg-slate-50/50 p-8">
             
-            <div v-if="activeView === 'empty'" class="flex-1 flex items-center justify-center flex-col text-slate-400">
-                <svg class="w-10 h-10 mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"></path>
-                </svg>
-                <p class="font-medium text-xs">Selecione um Dataset na barra lateral para visualizar o resumo operacional.</p>
+            <div v-if="activeView === 'empty'" class="flex-1 flex items-center justify-center flex-col text-slate-400 max-w-md mx-auto text-center animate-fade-in">
+                <div class="w-16 h-16 mb-4 rounded-2xl bg-white border border-slate-200 flex items-center justify-center shadow-sm text-slate-300">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 Carlsbad 4.5h3.5m-3.5 0a2.25 2.25 0 00-2.25 2.25v.75m2.25-3h3.5M19.5 7.5a2.25 2.25 0 00-2.25-2.25h-.75m0 3h3.5M4.5 7.5a2.25 2.25 0 012.25-2.25h.75m0 3H4.5"></path>
+                    </svg>
+                </div>
+                <p class="font-semibold text-slate-800 text-xs tracking-tight mb-1">Visão Geral Operacional</p>
+                <p class="text-slate-400 leading-relaxed text-[11px]">Selecione um Dataset na barra lateral para visualizar o resumo operacional.</p>
             </div>
 
-            <div v-else-if="isLoadingHealth" class="flex-1 flex items-center justify-center flex-col text-gcp-blue font-medium animate-pulse">
-                <span>Buscando e consolidando metadados do BigQuery...</span>
+            <div v-else-if="isLoadingHealth" class="flex-1 flex items-center justify-center flex-col text-center max-w-sm mx-auto animate-fade-in">
+                <div class="relative w-10 h-10 mb-4 flex items-center justify-center">
+                    <div class="absolute inset-0 border-2 border-slate-200 rounded-full"></div>
+                    <div class="absolute inset-0 border-2 border-slate-900 rounded-full border-t-transparent animate-spin"></div>
+                </div>
+                <span class="text-slate-800 font-semibold text-[11px] tracking-tight">Buscando e consolidando metadados do BigQuery...</span>
             </div>
 
-            <div v-else-if="activeView === 'dataset'" class="w-full max-w-7xl mx-auto space-y-5">
-                <header class="bg-white p-4 rounded-lg border border-gcp-border shadow-sm border-t-4 border-t-gcp-blue">
-                    <span class="text-[10px] text-gcp-blue font-bold uppercase tracking-wider block mb-0.5">Resumo do Dataset</span>
-                    <h2 class="text-lg font-bold text-gcp-dark">📊 {{ activeDataset }}</h2>
+            <div v-else-if="activeView === 'dataset'" class="w-full max-w-7xl mx-auto space-y-6 animate-fade-in">
+                
+                <header class="bg-white p-6 rounded-2xl border border-slate-200/60 shadow-[0_2px_8px_rgba(0,0,0,0.01)] flex flex-col gap-1">
+                    <span class="text-[9px] text-slate-400 font-bold uppercase tracking-widest block">Resumo do Dataset</span>
+                    <h2 class="text-base font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                        <span class="text-lg">📊</span> {{ activeDataset }}
+                    </h2>
                 </header>
 
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-                    <div class="bg-white p-3 rounded-lg border border-gcp-border shadow-sm">
-                        <div class="text-slate-400 text-[10px] font-bold uppercase mb-0.5">Região</div>
-                        <div class="text-base font-black text-gcp-dark font-mono">{{ datasetHealth?.location }}</div>
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    <div class="bg-white p-4 rounded-2xl border border-slate-200/60 shadow-[0_2px_8px_rgba(0,0,0,0.01)] flex flex-col justify-between">
+                        <div class="text-slate-400 text-[9px] font-bold uppercase tracking-wider mb-2">Região</div>
+                        <div class="text-base font-bold text-slate-900 font-mono tracking-tight">{{ datasetHealth?.location }}</div>
                     </div>
-                    <div class="bg-white p-3 rounded-lg border border-gcp-border shadow-sm">
-                        <div class="text-slate-400 text-[10px] font-bold uppercase mb-0.5">Total Tabelas</div>
-                        <div class="text-base font-black text-gcp-dark font-mono">{{ datasetHealth?.kpis.total_tables }}</div>
+                    <div class="bg-white p-4 rounded-2xl border border-slate-200/60 shadow-[0_2px_8px_rgba(0,0,0,0.01)] flex flex-col justify-between">
+                        <div class="text-slate-400 text-[9px] font-bold uppercase tracking-wider mb-2">Total Tabelas</div>
+                        <div class="text-base font-black text-slate-900 font-mono tracking-tight">{{ datasetHealth?.kpis.total_tables }}</div>
                     </div>
-                    <div class="bg-white p-3 rounded-lg border border-gcp-border shadow-sm">
+                    <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between relative overflow-hidden">
+                        <div class="absolute top-0 left-0 right-0 h-0.5 bg-red-500"></div>
                         <div class="text-slate-400 text-[10px] font-bold uppercase mb-0.5">Tabelas Vazias</div>
                         <div class="text-base font-black text-red-600 font-mono">{{ datasetHealth?.kpis.empty_tables }}</div>
                     </div>
-                    <div class="bg-white p-3 rounded-lg border border-gcp-border shadow-sm">
+                    <div class="bg-white p-3 rounded-lg border border-gcp-border shadow-sm flex flex-col justify-between">
                         <div class="text-slate-400 text-[10px] font-bold uppercase mb-0.5">Tamanho Total</div>
-                        <div class="text-base font-black text-gcp-blue font-mono">{{ formatBytes(datasetHealth?.kpis.total_size_bytes) }}</div>
+                        <div class="text-base font-black text-slate-900 font-mono tracking-tight">{{ formatBytes(datasetHealth?.kpis.total_size_bytes) }}</div>
                     </div>
                     <div class="bg-white p-3 rounded-lg border border-gcp-border shadow-sm">
                         <div class="text-slate-400 text-[10px] font-bold uppercase mb-0.5">Total Linhas</div>
-                        <div class="text-base font-black text-gcp-dark font-mono">{{ formatNumber(datasetHealth?.kpis.total_rows) }}</div>
+                        <div class="text-base font-black text-slate-900 font-mono tracking-tight">{{ formatNumber(datasetHealth?.kpis.total_rows) }}</div>
                     </div>
                 </div>
 
-                <div class="bg-white p-4 rounded-lg border border-gcp-border shadow-sm">
-                    <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">SLA de Atualização (Janelas de Tempo Decorrido)</h3>
-                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-center">
-                        <div class="bg-emerald-50/50 border border-emerald-100 p-2 rounded">
-                            <span class="text-[10px] text-slate-500 block mb-0.5">Até 12h</span>
-                            <span class="text-md font-bold text-emerald-700 font-mono">{{ datasetHealth?.kpis.h12 }}</span>
+                <div class="bg-white p-5 rounded-2xl border border-gcp-border shadow-sm">
+                    <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4">SLA de Atualização (Janelas de Tempo Decorrido)</h3>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                        <div class="bg-slate-50 border border-slate-100 p-3 rounded-xl transition-all hover:bg-slate-100/50">
+                            <span class="text-[10px] text-slate-400 font-medium block mb-1">Até 12h</span>
+                            <span class="text-sm font-black text-slate-900 font-mono">{{ datasetHealth?.kpis.h12 }}</span>
                         </div>
-                        <div class="bg-teal-50/50 border border-teal-100 p-2 rounded">
+                        <div class="bg-slate-50/50 border border-slate-100 p-2 rounded">
                             <span class="text-[10px] text-slate-500 block mb-0.5">12h a 24h</span>
-                            <span class="text-md font-bold text-teal-700 font-mono">{{ datasetHealth?.kpis.h24 }}</span>
+                            <span class="text-sm font-bold text-slate-800 font-mono">{{ datasetHealth?.kpis.h24 }}</span>
                         </div>
-                        <div class="bg-blue-50/50 border border-blue-100 p-2 rounded">
+                        <div class="bg-slate-50/50 border border-slate-100 p-2 rounded">
                             <span class="text-[10px] text-slate-500 block mb-0.5">24h a 48h</span>
-                            <span class="text-md font-bold text-blue-700 font-mono">{{ datasetHealth?.kpis.h48 }}</span>
+                            <span class="text-md font-bold text-slate-800 font-mono">{{ datasetHealth?.kpis.h48 }}</span>
                         </div>
-                        <div class="bg-amber-50/50 border border-amber-100 p-2 rounded">
+                        <div class="bg-slate-50/50 border border-slate-100 p-2 rounded">
                             <span class="text-[10px] text-slate-500 block mb-0.5">48h a 7 dias</span>
-                            <span class="text-md font-bold text-amber-700 font-mono">{{ datasetHealth?.kpis.w1 }}</span>
+                            <span class="text-md font-bold text-slate-800 font-mono">{{ datasetHealth?.kpis.w1 }}</span>
                         </div>
-                        <div class="bg-orange-50/50 border border-orange-100 p-2 rounded">
+                        <div class="bg-slate-50/50 border border-slate-100 p-2 rounded">
                             <span class="text-[10px] text-slate-500 block mb-0.5">7 dias a 1 mês</span>
-                            <span class="text-md font-bold text-orange-700 font-mono">{{ datasetHealth?.kpis.m1 }}</span>
+                            <span class="text-md font-bold text-slate-800 font-mono">{{ datasetHealth?.kpis.m1 }}</span>
                         </div>
-                        <div class="bg-red-50/50 border border-red-100 p-2 rounded">
+                        <div class="bg-slate-50/50 border border-slate-100 p-2 rounded">
                             <span class="text-[10px] text-slate-500 block mb-0.5">> 1 mês</span>
-                            <span class="text-md font-bold text-red-700 font-mono">{{ datasetHealth?.kpis.old }}</span>
+                            <span class="text-md font-bold text-slate-800 font-mono">{{ datasetHealth?.kpis.old }}</span>
                         </div>
                     </div>
                 </div>
 
-                <div class="bg-white rounded-lg border border-gcp-border shadow-sm overflow-hidden">
-                    <div class="p-3 bg-slate-50 border-b border-gcp-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div class="bg-white rounded-xl border border-gcp-border shadow-sm overflow-hidden">
+                    <div class="p-4 bg-slate-50/60 border-b border-gcp-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
-                            <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Ativos de Dados</h3>
-                            <p class="text-[10px] text-slate-400">Ordene clicando nos cabeçalhos e filtre em tempo real por nome/id.</p>
+                            <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wider">Ativos de Dados</h3>
+                            <p class="text-[10px] text-slate-400 mt-0.5">Ordene clicando nos cabeçalhos e filtre em tempo real por nome/id.</p>
                         </div>
-                        <div class="w-full sm:w-64">
-                            <input type="text" v-model="tableSearch" placeholder="🔍 Filtrar por ID de tabela..." class="w-full text-xs px-2 py-1.5 bg-white border border-gcp-border rounded focus:outline-none focus:border-gcp-blue transition">
+                        <div class="w-full sm:w-72">
+                            <input type="text" v-model="tableSearch" placeholder="🔍 Filtrar por ID de tabela..." class="w-full text-xs px-3 py-2 bg-white border border-gcp-border rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 transition-all font-mono">
                         </div>
                     </div>
                     
                     <div class="overflow-x-auto">
                         <table class="w-full text-left text-xs whitespace-nowrap">
-                            <thead class="bg-gcp-gray text-slate-500 font-bold border-b border-gcp-border uppercase text-[10px] select-none">
+                            <thead class="bg-slate-50/80 text-slate-500 font-bold border-b border-gcp-border uppercase text-[10px] select-none">
                                 <tr>
-                                    <th @click="sortTables('table_id')" class="px-4 py-2.5 cursor-pointer hover:bg-gray-200 transition">Nome / ID {{ renderSortIcon('table_id') }}</th>
-                                    <th @click="sortTables('table_type')" class="px-3 py-2.5 cursor-pointer hover:bg-gray-200 transition">Tipo {{ renderSortIcon('table_type') }}</th>
-                                    <th @click="sortTables('column_count')" class="px-3 py-2.5 text-right cursor-pointer hover:bg-gray-200 transition">Qtd de Colunas {{ renderSortIcon('column_count') }}</th>
+                                    <th @click="sortTables('table_id')" class="px-5 py-3 cursor-pointer hover:bg-slate-100 transition-colors">Nome / ID {{ renderSortIcon('table_id') }}</th>
+                                    <th @click="sortTables('table_type')" class="px-4 py-3 cursor-pointer hover:bg-gray-200 transition">Tipo {{ renderSortIcon('table_type') }}</th>
+                                    <th @click="sortTables('column_count')" class="px-4 py-2.5 text-right cursor-pointer hover:bg-gray-200 transition">Qtd de Colunas {{ renderSortIcon('column_count') }}</th>
                                     <th @click="sortTables('created_time')" class="px-3 py-2.5 cursor-pointer hover:bg-gray-200 transition">Data de Criação {{ renderSortIcon('created_time') }}</th>
                                     <th @click="sortTables('modified_time')" class="px-3 py-2.5 cursor-pointer hover:bg-gray-200 transition">Data e Hora de Atualização {{ renderSortIcon('modified_time') }}</th>
                                     <th @click="sortTables('row_count')" class="px-3 py-2.5 text-right cursor-pointer hover:bg-gray-200 transition">Qtd de Linhas {{ renderSortIcon('row_count') }}</th>
                                     <th @click="sortTables('size_bytes')" class="px-3 py-2.5 text-right cursor-pointer hover:bg-gray-200 transition">Volume em Bytes {{ renderSortIcon('size_bytes') }}</th>
-                                    <th @click="sortTables('location')" class="px-4 py-2.5 text-center cursor-pointer hover:bg-gray-200 transition">Região {{ renderSortIcon('location') }}</th>
+                                    <th @click="sortTables('location')" class="px-5 py-2.5 text-center cursor-pointer hover:bg-gray-200 transition">Região {{ renderSortIcon('location') }}</th>
                                 </tr>
                             </thead>
-                            <tbody class="divide-y divide-gray-100">
-                                <tr v-for="table in filteredTables" :key="table.table_id" class="hover:bg-slate-50 transition-colors">
-                                    <td class="px-4 py-2.5 font-bold text-gcp-dark font-mono flex items-center justify-between gap-2">
-                                        <div class="flex items-center gap-1.5">
-                                            <span>{{ table.table_type === 'VIEW' ? '👁️' : '📄' }}</span> {{ table.table_id }}
+                            <tbody class="divide-y divide-slate-100">
+                                <tr v-for="table in filteredTables" :key="table.table_id" class="hover:bg-slate-50/80 transition-colors group">
+                                    <td class="px-4 py-3 font-semibold text-slate-900 font-mono flex items-center justify-between gap-4">
+                                        <div class="flex items-center gap-2 truncate">
+                                            <span class="opacity-80">{{ table.table_type === 'VIEW' ? '👁️' : '📄' }}</span>
+                                            <span class="truncate">{{ table.table_id }}</span>
                                         </div>
-                                        <button @click="openProfileModal(table.table_id)" class="bg-gcp-lightBlue text-gcp-blue border border-gcp-border hover:bg-gcp-blue hover:text-white px-2 py-0.5 rounded text-[10px] font-bold transition-all shadow-sm">
+                                        <button @click="openProfileModal(table.table_id)" class="opacity-80 group-hover:opacity-100 bg-white border border-slate-200 text-slate-700 hover:bg-slate-900 hover:text-white hover:border-slate-900 px-2.5 py-1 rounded text-[10px] font-bold transition-all shadow-xs shrink-0">
                                             🔍 Analisar
                                         </button>
                                     </td>
                                     <td class="px-3 py-2.5">
-                                        <span class="text-[9px] px-1.5 py-0.5 rounded font-bold" :class="table.table_type === 'VIEW' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-700'">{{ table.table_type }}</span>
+                                        <span class="text-[9px] px-2 py-0.5 rounded font-black tracking-wider" :class="table.table_type === 'VIEW' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-slate-100 text-slate-700 border border-slate-200/50'">{{ table.table_type }}</span>
                                     </td>
-                                    <td class="px-3 py-2.5 text-right font-mono font-semibold text-slate-700">
+                                    <td class="px-3 py-2.5 text-right font-mono font-medium text-slate-800">
                                         {{ formatNumber(table.column_count) }}
                                     </td>
                                     <td class="px-3 py-2.5 text-slate-500 font-mono">{{ table.created_time }}</td>
                                     <td class="px-3 py-2.5 text-slate-500 font-mono">{{ table.modified_time }}</td>
-                                    <td class="px-3 py-2.5 text-right font-mono font-semibold" :class="table.row_count === 0 ? 'text-red-500' : 'text-slate-700'">{{ formatNumber(table.row_count) }}</td>
-                                    <td class="px-3 py-2.5 text-right font-mono font-semibold text-gcp-blue">{{ formatBytes(table.size_bytes) }}</td>
-                                    <td class="px-4 py-2.5 text-center font-mono text-slate-500">{{ table.location }}</td>
+                                    <td class="px-3 py-2.5 text-right font-mono font-bold" :class="table.row_count === 0 ? 'text-red-500' : 'text-slate-800'">{{ formatNumber(table.row_count) }}</td>
+                                    <td class="px-3 py-2.5 text-right font-mono font-bold text-slate-900">{{ formatBytes(table.size_bytes) }}</td>
+                                    <td class="px-4 py-2.5 text-center font-mono text-slate-400 text-[11px]">{{ table.location }}</td>
                                 </tr>
                                 <tr v-if="filteredTables.length === 0">
-                                    <td colspan="8" class="text-center py-6 text-slate-400 bg-slate-50/50">Nenhuma tabela correspondente encontrada.</td>
+                                    <td colspan="8" class="text-center py-10 text-slate-400 bg-slate-50/50 font-medium">Nenhuma tabela correspondente encontrada.</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -176,130 +228,130 @@
                 </div>
             </div>
 
-            <div v-if="isProfileModalOpen" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                <div class="bg-white rounded-lg shadow-xl border border-gcp-border w-full max-w-5xl max-h-[85vh] flex flex-col overflow-hidden">
+            <div v-if="isProfileModalOpen" class="fixed inset-0 bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4 z-50">
+                <div class="bg-white rounded-2xl shadow-2xl border border-slate-200/80 w-full max-w-5xl max-h-[88vh] flex flex-col overflow-hidden animate-fade-in">
                     
-                    <div class="p-4 bg-slate-50 border-b border-gcp-border flex justify-between items-center">
-                        <div>
-                            <span class="text-[9px] bg-gcp-blue text-white font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">Módulo de Qualidade</span>
-                            <h3 class="text-sm font-bold text-gcp-dark mt-1 font-mono">Tabela: {{ selectedTableMetadata?.table_id }}</h3>
+                    <div class="p-5 bg-white border-b border-slate-100 flex justify-between items-center">
+                        <div class="flex flex-col gap-0.5">
+                            <span class="text-[9px] bg-slate-900 text-white font-bold px-2 py-0.5 rounded-md uppercase tracking-widest self-start">Módulo de Qualidade</span>
+                            <h3 class="text-xs font-bold text-slate-900 mt-1.5 font-mono">Tabela: {{ selectedTableMetadata?.table_id }}</h3>
                         </div>
-                        <button @click="isProfileModalOpen = false" class="text-slate-400 hover:text-slate-700 font-bold text-sm">✕</button>
+                        <button @click="isProfileModalOpen = false" class="w-7 h-7 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-slate-800 transition-colors font-semibold text-xs">✕</button>
                     </div>
 
-                    <div v-if="selectedTableMetadata?.table_type === 'VIEW'" class="bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-amber-900 flex items-center gap-2">
-                        <span class="text-sm">⚠️</span>
-                        <p class="text-[11px] font-medium">
+                    <div v-if="selectedTableMetadata?.table_type === 'VIEW'" class="bg-amber-50 border-b border-amber-200/60 px-5 py-3 text-amber-900 flex items-start gap-3">
+                        <span class="text-base mt-0.5">⚠️</span>
+                        <p class="text-[11px] font-medium leading-relaxed">
                             <strong>Esta tabela é uma VIEW lógica.</strong> O recurso <code>TABLESAMPLE SYSTEM</code> foi desativado automaticamente. A execução processará a View por completo, a menos que uma janela restrita de data seja configurada abaixo. <strong>Cuidado com o custo operacional!</strong>
                         </p>
                     </div>
 
-                    <div class="p-4 bg-slate-50/50 border-b border-gcp-border grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                    <div class="p-5 bg-slate-50/80 border-b border-slate-200/60 grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
                         <div class="md:col-span-2">
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Amostragem (%)</label>
-                            <input type="number" v-model="profileSamplePercent" :disabled="selectedTableMetadata?.table_type === 'VIEW'" min="1" max="100" class="w-full text-xs p-1.5 border border-gcp-border rounded bg-white disabled:bg-slate-100 disabled:text-slate-400 font-mono">
+                            <label class="block text-[9px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Amostragem (%)</label>
+                            <input type="number" v-model="profileSamplePercent" :disabled="selectedTableMetadata?.table_type === 'VIEW'" min="1" max="100" class="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white disabled:bg-slate-100 disabled:text-slate-400 font-mono focus:outline-none focus:ring-1 focus:ring-slate-900">
                         </div>
                         
                         <div class="md:col-span-2">
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">MÉTODO UNICIDADE</label>
-                            <select v-model="profileExactDistinct" @change="handleUniquenessMethodChange" class="w-full text-xs p-1.5 border border-gcp-border rounded bg-white font-mono font-bold" :class="profileExactDistinct ? 'text-purple-700 border-purple-300' : 'text-slate-700'">
+                            <label class="block text-[9px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">MÉTODO UNICIDADE</label>
+                            <select v-model="profileExactDistinct" @change="handleUniquenessMethodChange" class="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white font-mono font-bold focus:outline-none focus:ring-1 focus:ring-slate-900" :class="profileExactDistinct ? 'text-purple-700 border-purple-200 bg-purple-50/30' : 'text-slate-800'">
                                 <option :value="false">APPROX</option>
                                 <option :value="true">COUNT(DISTINCT)</option>
                             </select>
                         </div>
 
                         <div class="md:col-span-2">
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Coluna de Data</label>
-                            <select v-model="profileDateColumn" class="w-full text-xs p-1.5 border border-gcp-border rounded bg-white font-mono">
+                            <label class="block text-[9px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Coluna de Data</label>
+                            <select v-model="profileDateColumn" class="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white font-mono focus:outline-none focus:ring-1 focus:ring-slate-900">
                                 <option value="">-- Sem filtro temporal --</option>
                                 <option v-for="col in selectedTableMetadata?.date_columns" :key="col" :value="col">{{ col }}</option>
                             </select>
                         </div>
                         <div class="md:col-span-2">
-                            <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Janela (D-X Dias)</label>
-                            <input type="number" v-model="profileDaysLookback" :disabled="!profileDateColumn" placeholder="Ex: 7" class="w-full text-xs p-1.5 border border-gcp-border rounded bg-white disabled:bg-slate-100 font-mono">
+                            <label class="block text-[9px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Janela (D-X Dias)</label>
+                            <input type="number" v-model="profileDaysLookback" :disabled="!profileDateColumn" placeholder="Ex: 7" class="w-full text-xs px-3 py-2 border border-slate-200 rounded-lg bg-white disabled:bg-slate-100 font-mono focus:outline-none focus:ring-1 focus:ring-slate-900">
                         </div>
                         <div class="md:col-span-4 flex gap-2">
-                            <button @click="runProfilingAction(true)" :disabled="isProfilingLoading || isMetadataLoading" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-1.5 px-2 rounded text-xs transition disabled:opacity-50">
+                            <button @click="runProfilingAction(true)" :disabled="isProfilingLoading || isMetadataLoading" class="flex-1 bg-white border border-slate-200 hover:bg-slate-100 text-slate-800 font-semibold py-2 px-3 rounded-lg text-xs transition-all disabled:opacity-50 shadow-xs">
                                 🧮 Estimar Custo
                             </button>
-                            <button @click="runProfilingAction(false)" :disabled="isProfilingLoading || isMetadataLoading" class="flex-1 bg-gcp-blue hover:bg-blue-700 text-white font-bold py-1.5 px-2 rounded text-xs transition disabled:opacity-50">
+                            <button @click="runProfilingAction(false)" :disabled="isProfilingLoading || isMetadataLoading" class="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-semibold py-2 px-3 rounded-lg text-xs transition-all disabled:opacity-50 shadow-sm">
                                 🚀 Executar Profile
                             </button>
                         </div>
                     </div>
 
-                    <div class="flex-1 overflow-y-auto p-4 space-y-4">
-                        <div v-if="isMetadataLoading || isProfilingLoading" class="text-center py-12 text-gcp-blue font-medium animate-pulse text-xs">
+                    <div class="flex-1 overflow-y-auto p-5 space-y-4">
+                        <div v-if="isMetadataLoading || isProfilingLoading" class="text-center py-16 text-slate-800 font-semibold text-[11px] animate-pulse">
                             Processando comunicação e regras analíticas no Google BigQuery...
                         </div>
                         
                         <template v-else>
-                            <div v-if="costEstimation" class="bg-blue-50 border border-blue-100 p-3 rounded-lg grid grid-cols-2 gap-4">
+                            <div v-if="costEstimation" class="bg-slate-50 border border-slate-200/80 p-4 rounded-xl grid grid-cols-2 gap-4">
                                 <div>
-                                    <span class="text-[9px] text-slate-400 font-bold uppercase block">Volume Estimado de Varredura</span>
-                                    <span class="font-mono text-sm font-black text-gcp-blue">{{ formatBytes(costEstimation.bytes_scanned) }}</span>
+                                    <span class="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mb-0.5">Volume Estimado de Varredura</span>
+                                    <span class="font-mono text-xs font-bold text-slate-900">{{ formatBytes(costEstimation.bytes_scanned) }}</span>
                                 </div>
                                 <div>
-                                    <span class="text-[9px] text-slate-400 font-bold uppercase block">Custo Estimado da Consulta (USD)</span>
-                                    <span class="font-mono text-sm font-black text-emerald-600">
+                                    <span class="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mb-0.5">Custo Estimado da Consulta (USD)</span>
+                                    <span class="font-mono text-xs font-black text-emerald-600">
                                         $ {{ costEstimation.cost_usd === 0 ? '0.00 (Cache)' : costEstimation.cost_usd.toFixed(6) }}
                                     </span>
                                 </div>
                             </div>
 
-                            <div v-if="activeQuery" class="bg-slate-900 rounded-lg overflow-hidden border border-slate-800 shadow-sm">
-                                <div class="px-3 py-1.5 bg-slate-800 text-slate-300 font-bold text-[9px] flex justify-between items-center select-none uppercase tracking-wider">
+                            <div v-if="activeQuery" class="bg-slate-900 rounded-xl overflow-hidden border border-slate-950 shadow-sm">
+                                <div class="px-4 py-2 bg-slate-950 text-slate-400 font-semibold text-[9px] flex justify-between items-center select-none uppercase tracking-wider border-b border-slate-900">
                                     <span>🔮 SQL Query Real Executada (Mecanismo de Auditoria FinOps)</span>
-                                    <button @click="copyQueryToClipboard" class="text-gcp-lightBlue hover:text-white transition text-[9px] font-bold">
+                                    <button @click="copyQueryToClipboard" class="text-white hover:text-slate-300 transition-colors text-[9px] font-bold">
                                         📋 Copiar SQL
                                     </button>
                                 </div>
-                                <pre class="p-3 text-emerald-400 font-mono text-[10px] overflow-x-auto max-h-40 whitespace-pre-wrap leading-relaxed select-all bg-slate-950">{{ activeQuery }}</pre>
+                                <pre class="p-4 text-emerald-400 font-mono text-[10px] overflow-x-auto max-h-40 whitespace-pre-wrap leading-relaxed select-all bg-slate-950/80">{{ activeQuery }}</pre>
                             </div>
 
-                            <div v-if="profilingResult" class="bg-slate-50 p-2 rounded border border-dashed text-[10px] text-slate-500 font-mono flex gap-4">
-                                <div><strong>Registros na Amostra:</strong> {{ formatNumber(profilingResult.sampled_rows) }} / {{ formatNumber(profilingResult.total_rows) }}</div>
+                            <div v-if="profilingResult" class="bg-slate-50/80 p-2.5 rounded-lg border border-slate-200/60 text-[10px] text-slate-500 font-mono">
+                                <strong>Registros na Amostra:</strong> {{ formatNumber(profilingResult.sampled_rows) }} / {{ formatNumber(profilingResult.total_rows) }}
                             </div>
 
-                            <div class="overflow-x-auto border border-gcp-border rounded-lg">
+                            <div class="overflow-x-auto border border-slate-200/80 rounded-xl">
                                 <table class="w-full text-left text-xs whitespace-nowrap">
-                                    <thead class="bg-gcp-gray text-slate-500 font-bold border-b border-gcp-border uppercase text-[9px]">
+                                    <thead class="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 uppercase text-[9px] tracking-wider select-none">
                                         <tr>
-                                            <th class="px-3 py-2">Nome da Coluna</th>
-                                            <th class="px-2 py-2">Tipo Físico</th>
-                                            <th v-if="profilingResult" class="px-2 py-2 text-right">Completude</th>
-                                            <th v-if="profilingResult" class="px-2 py-2 text-right">Unicidade {{ profileExactDistinct ? '(Exato)' : '(HLL)' }}</th>
-                                            <th v-if="profilingResult" class="px-3 py-2">Valor Mínimo (MIN)</th>
-                                            <th v-if="profilingResult" class="px-3 py-2">Valor Máximo (MAX)</th>
-                                            <th class="px-3 py-2" v-else>Modo de Aceitação</th>
+                                            <th class="px-4 py-3">Nome da Coluna</th>
+                                            <th class="px-3 py-3">Tipo Físico</th>
+                                            <th v-if="profilingResult" class="px-3 py-3 text-right">Completude</th>
+                                            <th v-if="profilingResult" class="px-3 py-3 text-right">Unicidade {{ profileExactDistinct ? '(Exato)' : '(HLL)' }}</th>
+                                            <th v-if="profilingResult" class="px-4 py-3">Valor Mínimo (MIN)</th>
+                                            <th v-if="profilingResult" class="px-4 py-3">Valor Máximo (MAX)</th>
+                                            <th class="px-4 py-3" v-else>Modo de Aceitação</th>
                                         </tr>
                                     </thead>
-                                    <tbody class="divide-y divide-gray-100 font-mono text-[11px]">
-                                        <tr v-for="col in (profilingResult ? profilingResult.columns : selectedTableMetadata?.schema)" :key="col.name" class="hover:bg-slate-50 transition-colors">
-                                            <td class="px-3 py-2 font-bold text-gcp-dark">{{ col.name }}</td>
-                                            <td class="px-2 py-2"><span class="bg-gray-100 text-slate-600 px-1 py-0.5 rounded text-[10px]">{{ col.type }}</span></td>
+                                    <tbody class="divide-y divide-slate-100 font-mono text-[11px] text-slate-700">
+                                        <tr v-for="col in (profilingResult ? profilingResult.columns : selectedTableMetadata?.schema)" :key="col.name" class="hover:bg-slate-50/50 transition-colors">
+                                            <td class="px-4 py-3 font-semibold text-slate-900">{{ col.name }}</td>
+                                            <td class="px-3 py-3"><span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200/40 text-[10px]">{{ col.type }}</span></td>
                                             
                                             <template v-if="profilingResult">
                                                 <template v-if="col.status === 'profiled'">
-                                                    <td class="px-2 py-2 text-right font-semibold" :class="col.completeness_percent < 80 ? 'text-orange-600' : 'text-slate-700'">
+                                                    <td class="px-3 py-3 text-right font-bold" :class="col.completeness_percent < 80 ? 'text-amber-600' : 'text-slate-900'">
                                                         {{ col.completeness_percent }}%
                                                     </td>
-                                                    <td class="px-2 py-2 text-right text-purple-700 font-semibold">
-                                                        {{ col.uniqueness_percent }}% <span class="text-[9px] text-slate-400">({{ formatNumber(col.approx_distinct_count) }} u)</span>
+                                                    <td class="px-3 py-3 text-right text-purple-700 font-bold">
+                                                        {{ col.uniqueness_percent }}% <span class="text-[9px] text-slate-400 font-normal">({{ formatNumber(col.approx_distinct_count) }} u)</span>
                                                     </td>
-                                                    <td class="px-3 py-2 text-slate-500 truncate max-w-xs" :title="col.min">{{ col.min ?? '-' }}</td>
-                                                    <td class="px-3 py-2 text-slate-500 truncate max-w-xs" :title="col.max">{{ col.max ?? '-' }}</td>
+                                                    <td class="px-4 py-3 text-slate-500 truncate max-w-xs" :title="col.min">{{ col.min ?? '-' }}</td>
+                                                    <td class="px-4 py-3 text-slate-500 truncate max-w-xs" :title="col.max">{{ col.max ?? '-' }}</td>
                                                 </template>
                                                 <template v-else>
-                                                    <td colspan="4" class="px-3 py-2 text-center text-amber-600 bg-amber-50/20 font-medium text-[10px]">
+                                                    <td colspan="4" class="px-4 py-3 text-center text-slate-400 bg-slate-50/40 font-medium text-[10px] italic">
                                                         Tipo estruturado não elegível para profiling plano.
                                                     </td>
                                                 </template>
                                             </template>
                                             
                                             <template v-else>
-                                                <td class="px-3 py-2 text-slate-400 italic">{{ col.mode }}</td>
+                                                <td class="px-4 py-3 text-slate-400 italic">{{ col.mode }}</td>
                                             </template>
                                         </tr>
                                     </tbody>
@@ -328,7 +380,6 @@
                 const tableSortOrder = ref('asc');
                 const toast = ref(null);
 
-                // Variáveis de estado reativas do Módulo de Qualidade FinOps
                 const isProfileModalOpen = ref(false);
                 const selectedTableMetadata = ref(null);
                 const profileSamplePercent = ref(10);
@@ -455,7 +506,7 @@
                             profilingResult.value = data;
                         }
                     } catch (e) {
-                        showToast("Erro na operação: " + e.message);
+                        showToast("Erro na operation: " + e.message);
                     } finally {
                         isProfilingLoading.value = false;
                     }

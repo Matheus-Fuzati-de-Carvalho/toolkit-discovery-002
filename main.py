@@ -197,7 +197,7 @@ def get_dataset_health(dataset_id: str):
         location = ds_ref.location or "US"
 
         # Solução FinOps: LEFT JOIN com INFORMATION_SCHEMA.COLUMNS para contagem gratuita de colunas
-        query_metadata = f"""
+        query_metadata = f"""       
         WITH table_base AS (
             SELECT
                 table_id,
